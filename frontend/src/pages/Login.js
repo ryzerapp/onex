@@ -12,9 +12,12 @@ const Login = () => {
     if (user) navigate("/dashboard", { replace: true });
   }, [user, navigate]);
 
-  const handleGoogle = () => {
-    const redirectUrl = window.location.origin + "/dashboard";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+  const redirectUrl = typeof window !== "undefined" ? window.location.origin + "/dashboard" : "/dashboard";
+  const oauthHref = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+
+  const handleGoogle = (e) => {
+    e.preventDefault();
+    window.location.href = oauthHref;
   };
 
   return (
@@ -40,15 +43,15 @@ const Login = () => {
           </p>
 
           <div className="mt-10 space-y-3">
-            <button
-              type="button"
+            <a
+              href={oauthHref}
               onClick={handleGoogle}
               data-testid="login-google-btn"
               className="w-full btn-gold !py-4 text-[15px]"
             >
               Continue with Google
               <ArrowRight size={18} />
-            </button>
+            </a>
             <p className="text-[12px] text-zinc-500 text-center mt-4">
               We never post on your behalf. Your profile stays private.
             </p>
