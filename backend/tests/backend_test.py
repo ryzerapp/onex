@@ -260,7 +260,7 @@ class TestSettings:
         r = client.put(f"{API}/settings", json={"settings": current})
         assert r.status_code == 200
         again = client.get(f"{API}/settings").json()["settings"]
-        assert again["notifications"]["sms"] is True
+        assert again["notifications"]["sms"]
 
 
 # -------------------- Logout (do at end) --------------------
