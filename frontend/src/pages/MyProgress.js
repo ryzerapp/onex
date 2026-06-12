@@ -10,6 +10,15 @@ import {
 
 const iconMap = { "user-plus": UserPlus, smartphone: Smartphone, "id-card": IdCard, calendar: Calendar, "pie-chart": PieChart };
 
+const PROGRESS_RING_SIZE = 160;
+const PROGRESS_RING_STROKE = 10;
+
+const STATUS_STYLES = {
+  completed: { color: "#22C55E", bg: "#1F3A2D", label: "Completed" },
+  pending: { color: "#FACC15", bg: "#3A2F0F", label: "Pending" },
+  upcoming: { color: "#71717A", bg: "#1E1F24", label: "Upcoming" },
+};
+
 const MyProgress = () => {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -81,9 +90,7 @@ const MyProgress = () => {
             {data.milestones.map((m, idx) => {
               const Icon = iconMap[m.icon] || Flag;
               const open = expanded === m.id;
-              const statusColor = m.status === "completed" ? "#22C55E" : m.status === "pending" ? "#FACC15" : "#71717A";
-              const statusBg = m.status === "completed" ? "#1F3A2D" : m.status === "pending" ? "#3A2F0F" : "#1E1F24";
-              const statusLabel = m.status === "completed" ? "Completed" : m.status === "pending" ? "Pending" : "Upcoming";
+              const { color: statusColor, bg: statusBg, label: statusLabel } = STATUS_STYLES[m.status] || STATUS_STYLES.upcoming;
               return (
                 <div key={m.id} className="flex gap-5 items-start mb-4 relative" data-testid={`milestone-${m.id}`}>
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-semibold z-10" style={{ background: statusBg, border: `1.5px solid ${statusColor}` }}>

@@ -9,23 +9,39 @@ import {
 
 const iconMap = { "user-plus": UserPlus, smartphone: Smartphone, "id-card": IdCard, calendar: Calendar, "pie-chart": PieChart, flag: Flag };
 
+const MS_PER_DAY = 86_400_000;
+const MS_PER_HOUR = 3_600_000;
+const MS_PER_MINUTE = 60_000;
+const MS_PER_SECOND = 1_000;
+
 const Countdown = ({ target }) => {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setNow(Date.now()), MS_PER_SECOND);
     return () => clearInterval(id);
   }, []);
   const diff = Math.max(0, new Date(target).getTime() - now);
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff / 3600000) % 24);
-  const mins = Math.floor((diff / 60000) % 60);
-  const secs = Math.floor((diff / 1000) % 60);
+  const days = Math.floor(diff / MS_PER_DAY);
+  const hours = Math.floor((diff / MS_PER_HOUR) % 24);
+  const mins = Math.floor((diff / MS_PER_MINUTE) % 60);
+  const secs = Math.floor((diff / MS_PER_SECOND) % 60);
   return [["Days", days], ["Hours", hours], ["Mins", mins], ["Secs", secs]].map(([label, v]) => (
     <div key={label} className="text-center">
       <div className="text-[24px] font-semibold text-white tabular-nums">{String(v).padStart(2, "0")}</div>
       <div className="text-[10px] uppercase tracking-[0.15em] text-zinc-500 mt-0.5">{label}</div>
     </div>
   ));
+};
+
+const ActivityIcon = ({ kind }) => {
+  const map = {
+    milestone: { Icon: CheckCircle2, color: "#22C55E" },
+    webinar: { Icon: Calendar, color: "#A78BFA" },
+    join: { Icon: Star, color: "#FACC15" },
+    waitlist: { Icon: Building2, color: "#FACC15" },
+  };
+  const { Icon, color } = map[kind] || { Icon: Gift, color: "#FACC15" };
+  return <Icon size={16} style={{ color }} />;
 };
 
 const Dashboard = () => {
@@ -225,11 +241,7 @@ const Dashboard = () => {
             {(recent_activity?.length ? recent_activity : [{ id: "x", kind: "welcome", title: "Welcome to OneX Club", reward: 100, created_at: new Date().toISOString() }]).slice(0, 5).map((a) => (
               <div key={a.id} className="flex items-center gap-3 p-3" data-testid={`activity-${a.id}`}>
                 <div className="w-10 h-10 rounded-full bg-[#1F3A2D] border border-[#22C55E]/20 flex items-center justify-center">
-                  {a.kind === "milestone" ? <CheckCircle2 size={16} className="text-[#22C55E]" /> :
-                   a.kind === "webinar" ? <Calendar size={16} className="text-[#A78BFA]" /> :
-                   a.kind === "join" ? <Star size={16} className="text-[#FACC15]" /> :
-                   a.kind === "waitlist" ? <Building2 size={16} className="text-[#FACC15]" /> :
-                   <Gift size={16} className="text-[#FACC15]" />}
+                  <ActivityIcon kind={a.kind} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] text-white truncate">{a.title}</div>

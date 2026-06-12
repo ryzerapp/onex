@@ -9,6 +9,9 @@ import {
 
 const iconMap = { calendar: Calendar, "user-plus": UserPlus, "shield-check": ShieldCheck, home: HomeIcon, "building-2": Building2 };
 
+const NEXT_TIER_RING_SIZE = 130;
+const NEXT_TIER_RING_STROKE = 8;
+
 const BenefitsLadder = () => {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -86,7 +89,7 @@ const BenefitsLadder = () => {
                   <div className="text-zinc-400 text-[13px] mt-2">away from</div>
                   <div className="text-white text-[20px] font-semibold">{data.next_tier.name}</div>
                 </div>
-                <ProgressRing size={130} stroke={8} percent={nextPct}>
+                <ProgressRing size={NEXT_TIER_RING_SIZE} stroke={NEXT_TIER_RING_STROKE} percent={nextPct}>
                   <div className="text-[22px] font-semibold text-white">{nextPct}%</div>
                 </ProgressRing>
               </div>

@@ -9,6 +9,16 @@ const TABS = [
   { id: "recorded", label: "Recorded Sessions" },
 ];
 
+const WebinarCardAction = ({ webinar: w, onRegister }) => {
+  if (w.status === "recorded") {
+    return <button className="w-full btn-ghost" data-testid={`webinar-watch-${w.id}`}><Play size={14} /> Watch Recording</button>;
+  }
+  if (w.registered) {
+    return <button disabled className="w-full btn-ghost border-[#22C55E]/40 text-[#22C55E]" data-testid={`webinar-registered-${w.id}`}><Check size={14} /> Registered</button>;
+  }
+  return <button onClick={() => onRegister(w)} className="w-full btn-gold" data-testid={`webinar-register-${w.id}`}>Register <ArrowRight size={14} /></button>;
+};
+
 const WebinarEvents = () => {
   const [tab, setTab] = useState("upcoming");
   const [data, setData] = useState(null);
@@ -95,13 +105,7 @@ const WebinarEvents = () => {
               </div>
               <p className="text-zinc-500 text-[13px] mt-3 line-clamp-2">{w.description}</p>
               <div className="mt-5">
-                {w.status === "recorded" ? (
-                  <button className="w-full btn-ghost" data-testid={`webinar-watch-${w.id}`}><Play size={14} /> Watch Recording</button>
-                ) : w.registered ? (
-                  <button disabled className="w-full btn-ghost border-[#22C55E]/40 text-[#22C55E]" data-testid={`webinar-registered-${w.id}`}><Check size={14} /> Registered</button>
-                ) : (
-                  <button onClick={() => register(w)} className="w-full btn-gold" data-testid={`webinar-register-${w.id}`}>Register <ArrowRight size={14} /></button>
-                )}
+                <WebinarCardAction webinar={w} onRegister={register} />
               </div>
             </div>
           </div>
