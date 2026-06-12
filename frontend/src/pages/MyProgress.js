@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/api";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -15,8 +15,8 @@ const MyProgress = () => {
   const [data, setData] = useState(null);
   const [expanded, setExpanded] = useState(null);
 
-  const load = () => api.get("/progress").then(({ data }) => setData(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/progress").then(({ data }) => setData(data)), []);
+  useEffect(() => { load(); }, [load]);
 
   const complete = async (id) => {
     try {

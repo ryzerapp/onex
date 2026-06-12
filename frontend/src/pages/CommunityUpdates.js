@@ -1,17 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/api";
 import { toast } from "sonner";
+import { devDebug } from "@/lib/devDebug";
 import { Heart, Bookmark, Share2, Building2, Megaphone, BookOpen, Award } from "lucide-react";
 
 const typeBadge = { launch: { icon: Building2, label: "Launch", color: "#FACC15" }, founder: { icon: Megaphone, label: "Founder", color: "#A78BFA" }, insight: { icon: BookOpen, label: "Insight", color: "#60A5FA" }, milestone: { icon: Award, label: "Milestone", color: "#22C55E" } };
 
 const CommunityUpdates = () => {
   const [updates, setUpdates] = useState([]);
-  const load = () => api.get("/community-updates").then(({ data }) => setUpdates(data.updates));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/community-updates").then(({ data }) => setUpdates(data.updates)), []);
+  useEffect(() => { load(); }, [load]);
 
-  const like = async (u) => { try { await api.post("/community-updates/like", { update_id: u.id }); load(); } catch (e) { console.debug("[updates] like failed", e); } };
-  const save = async (u) => { try { const { data } = await api.post("/community-updates/save", { update_id: u.id }); toast.success(data.saved ? "Saved" : "Removed"); load(); } catch (e) { console.debug("[updates] save failed", e); } };
+  const like = async (u) => { try { await api.post("/community-updates/like", { update_id: u.id }); load(); } catch (e) { devDebug("[updates] like failed", e); } };
+  const save = async (u) => { try { const { data } = await api.post("/community-updates/save", { update_id: u.id }); toast.success(data.saved ? "Saved" : "Removed"); load(); } catch (e) { devDebug("[updates] save failed", e); } };
   const share = (u) => { navigator.clipboard?.writeText(`OneX Club — ${u.title}`); toast.success("Update copied to share"); };
 
   return (

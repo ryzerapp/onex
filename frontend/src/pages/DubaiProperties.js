@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import { toast } from "sonner";
+import { devDebug } from "@/lib/devDebug";
 import { Heart, MapPin, Info, ArrowRight, Filter, ListOrdered, Gift, BarChart3, Globe2, TrendingUp, ShieldCheck } from "lucide-react";
 
 const CATEGORIES = [
@@ -16,8 +17,8 @@ const DubaiProperties = () => {
   const [category, setCategory] = useState("all");
   const [properties, setProperties] = useState([]);
 
-  const load = (cat = category) => api.get(`/properties${cat && cat !== "all" ? `?category=${cat}` : ""}`).then(({ data }) => setProperties(data.properties));
-  useEffect(() => { load(category); }, [category]);
+  const load = useCallback((cat = category) => api.get(`/properties${cat && cat !== "all" ? `?category=${cat}` : ""}`).then(({ data }) => setProperties(data.properties)), [category]);
+  useEffect(() => { load(category); }, [category, load]);
 
   const join = async (p) => {
     try { await api.post("/properties/waitlist", { property_id: p.id }); toast.success(`Joined waitlist for ${p.name}`); load(category); }
@@ -25,7 +26,7 @@ const DubaiProperties = () => {
   };
   const save = async (p) => {
     try { const { data } = await api.post("/properties/save", { property_id: p.id }); toast.success(data.saved ? "Saved to favorites" : "Removed from favorites"); load(category); }
-    catch (e) { console.debug("[properties] save failed", e); }
+    catch (e) { devDebug("[properties] save failed", e); }
   };
 
   const savedCount = useMemo(() => properties.filter(p => p.saved).length, [properties]);

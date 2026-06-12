@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/api";
+import { devDebug } from "@/lib/devDebug";
 
 const AuthContext = createContext(null);
 
@@ -12,7 +13,7 @@ const bootstrapAuth = async (apply) => {
     const { data } = await api.get("/auth/me");
     apply({ user: data.user });
   } catch (e) {
-    console.debug("[auth] not signed in", e?.response?.status);
+    devDebug("[auth] not signed in", e?.response?.status);
     apply({ user: null });
   }
 };
@@ -27,7 +28,7 @@ export const AuthProvider = ({ children }) => {
       setUser(data.user);
       return data.user;
     } catch (e) {
-      console.debug("[auth] refresh failed", e?.response?.status);
+      devDebug("[auth] refresh failed", e?.response?.status);
       setUser(null);
       return null;
     }
@@ -41,7 +42,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await api.post("/auth/logout"); } catch (e) { console.debug("[auth] logout error", e); }
+    try { await api.post("/auth/logout"); } catch (e) { devDebug("[auth] logout error", e); }
     setUser(null);
     window.location.href = "/login";
   }, []);

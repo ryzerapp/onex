@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/api";
 import { toast } from "sonner";
 import { Check, RotateCcw, Plus, Target, Bell, Users, Lightbulb, ArrowRight, Building2, Home as HomeIcon, Diamond, BedDouble, Sparkles } from "lucide-react";
@@ -15,8 +15,8 @@ const AllocationInterests = () => {
   const [categories, setCategories] = useState([]);
   const [selected, setSelected] = useState([]);
 
-  const load = () => api.get("/allocation-interests").then(({ data }) => { setCategories(data.categories); setSelected(data.selected_ids); });
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/allocation-interests").then(({ data }) => { setCategories(data.categories); setSelected(data.selected_ids); }), []);
+  useEffect(() => { load(); }, [load]);
 
   const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const reset = () => setSelected([]);

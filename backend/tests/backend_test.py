@@ -107,7 +107,7 @@ class TestProperties:
         after = next(p for p in client.get(f"{API}/properties").json()["properties"] if p["id"] == pid)
         if not before.get("joined_waitlist"):
             assert after["waitlist_count"] == before["waitlist_count"] + 1
-        assert after["joined_waitlist"] is True
+        assert after["joined_waitlist"]
 
     def test_save_toggle(self, client):
         pid = "prop_dubai_marina_residences"
@@ -141,7 +141,7 @@ class TestWebinars:
         assert r.status_code == 200
         d = r.json()
         assert len(d["webinars"]) >= 1
-        assert d["featured"] is not None
+        assert d["featured"] is not None  # keep `is` for None comparison (PEP 8)
 
     def test_recorded(self, client):
         r = client.get(f"{API}/webinars", params={"tab": "recorded"})
@@ -154,7 +154,7 @@ class TestWebinars:
         assert r1.status_code == 200
         r2 = client.post(f"{API}/webinars/register", json={"webinar_id": "wb_yield_strategies"})
         assert r2.status_code == 200
-        assert r2.json().get("already") is True
+        assert r2.json().get("already")
 
 
 # -------------------- Referrals --------------------
@@ -172,7 +172,7 @@ class TestReferrals:
     def test_share_log(self, client):
         r = client.post(f"{API}/referrals/share", json={"channel": "whatsapp"})
         assert r.status_code == 200
-        assert r.json().get("ok") is True
+        assert r.json().get("ok")
 
 
 # -------------------- Leaderboard --------------------
@@ -185,7 +185,7 @@ class TestLeaderboard:
         assert d["period"] == period
         assert len(d["podium"]) == 3
         assert len(d["list"]) <= 30
-        assert d["me"]["is_user"] is True
+        assert d["me"]["is_user"]
         assert "rank" in d["me"]
 
 
@@ -240,7 +240,7 @@ class TestSupport:
     def test_contact(self, client):
         r = client.post(f"{API}/support/contact", json={"message": "TEST_hello", "channel": "chat"})
         assert r.status_code == 200
-        assert r.json().get("ok") is True
+        assert r.json().get("ok")
         assert "message" in r.json()
 
 

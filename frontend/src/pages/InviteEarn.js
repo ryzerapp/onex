@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { toast } from "sonner";
+import { devDebug } from "@/lib/devDebug";
 import { Copy, Share2, MessageCircle, Send, Linkedin, Mail, UserPlus, CheckCircle2, Phone, ShieldCheck, Calendar } from "lucide-react";
 
 const channelIcons = [
@@ -20,7 +21,7 @@ const InviteEarn = () => {
 
   const share = async (channel) => {
     try { await api.post("/referrals/share", { channel }); toast.success(`Shared via ${channel}`); }
-    catch (e) { console.debug("[invite] share failed", e); }
+    catch (e) { devDebug("[invite] share failed", e); }
   };
   const copyLink = () => {
     navigator.clipboard?.writeText(data.referral_link);

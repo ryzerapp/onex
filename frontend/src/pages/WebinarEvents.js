@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/api";
 import { toast } from "sonner";
 import { Calendar, Clock, Users, Star, Play, Bell, Check, ArrowRight } from "lucide-react";
@@ -12,8 +12,8 @@ const TABS = [
 const WebinarEvents = () => {
   const [tab, setTab] = useState("upcoming");
   const [data, setData] = useState(null);
-  const load = (t = tab) => api.get(`/webinars?tab=${t}`).then(({ data }) => setData(data));
-  useEffect(() => { load(tab); }, [tab]);
+  const load = useCallback((t = tab) => api.get(`/webinars?tab=${t}`).then(({ data }) => setData(data)), [tab]);
+  useEffect(() => { load(tab); }, [tab, load]);
 
   const register = async (w) => {
     try { await api.post("/webinars/register", { webinar_id: w.id }); toast.success(`Registered for ${w.title}`); load(); }
