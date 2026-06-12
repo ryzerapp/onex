@@ -441,13 +441,19 @@ async def progress(user: CurrentUser):
     pending = [m for m in milestones if m["status"] == "pending"]
     upcoming = [m for m in milestones if m["status"] == "upcoming"]
     percent = int(round(100 * len(completed) / max(len(milestones), 1)))
+    next_reward = _compute_next_reward(milestones, user["aed_balance"])
+    all_milestones_done = len(milestones) > 0 and len(completed) == len(milestones)
     return {
         "milestones": milestones,
         "percent": percent,
         "completed_count": len(completed),
         "total": len(milestones),
         "upcoming_count": len(pending) + len(upcoming),
-        "to_next_reward": max(0, next_tier_info(user["aed_balance"])["remaining"]),
+        "to_next_reward": next_reward["amount"],
+        "next_reward": next_reward,
+        "all_milestones_done": all_milestones_done,
+        "current_tier": compute_tier(user["aed_balance"]),
+        "aed_balance": user["aed_balance"],
     }
 
 
@@ -460,29 +466,110 @@ async def complete_milestone(payload: MilestoneAction, user: CurrentUser):
     ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]})
     if not ms_doc:
         raise HTTPException(status_code=404, detail="Milestones not found")
-    rewards = {"verify_mobile": 25, "complete_kyc": 50, "attend_webinar": 25, "reserve_allocation": 50}
-    updated = []
-    activated_next = False
+
+    milestones = ms_doc["milestones"]
     granted = 0
-    for m in ms_doc["milestones"]:
+    just_completed = False
+    for m in milestones:
         if m["id"] == payload.milestone_id and m["status"] != "completed":
             m["status"] = "completed"
             m["completed_at"] = _now()
-            granted = rewards.get(payload.milestone_id, 0)
-        elif m["status"] == "upcoming" and not activated_next and m["id"] != payload.milestone_id:
-            # promote next upcoming to pending after we complete current
-            pass
-        updated.append(m)
-    # ensure earliest non-completed becomes pending
-    for m in updated:
-        if m["status"] == "upcoming":
-            m["status"] = "pending"
+            granted = MILESTONE_REWARDS.get(payload.milestone_id, 0)
+            just_completed = True
             break
-    await db.user_milestones.update_one({"user_id": user["user_id"]}, {"$set": {"milestones": updated}})
+
+    # Only re-shuffle queue when we actually completed something.
+    if just_completed:
+        has_pending = any(m["status"] == "pending" for m in milestones)
+        if not has_pending:
+            for m in milestones:
+                if m["status"] == "upcoming":
+                    m["status"] = "pending"
+                    break
+
+    await db.user_milestones.update_one(
+        {"user_id": user["user_id"]}, {"$set": {"milestones": milestones}}
+    )
     if granted:
         await grant_aed(user["user_id"], granted)
-        await add_activity(user["user_id"], "milestone", f"Completed: {payload.milestone_id.replace('_', ' ').title()}", granted)
-    return {"ok": True, "granted": granted}
+        await add_activity(
+            user["user_id"],
+            "milestone",
+            f"Completed: {MILESTONE_TITLE.get(payload.milestone_id, payload.milestone_id)}",
+            granted,
+        )
+
+    # Return the freshly computed next_reward so the UI can re-render without an extra round-trip.
+    fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    next_reward = _compute_next_reward(milestones, fresh_user["aed_balance"])
+    all_done = all(m["status"] == "completed" for m in milestones)
+    return {
+        "ok": True,
+        "granted": granted,
+        "already_completed": not just_completed,
+        "next_reward": next_reward,
+        "all_milestones_done": all_done,
+        "aed_balance": fresh_user["aed_balance"],
+        "tier": fresh_user["tier"],
+    }
+
+
+# -------------------- Milestone rewards --------------------
+MILESTONE_REWARDS = {
+    "verify_mobile": 25,
+    "complete_kyc": 50,
+    "attend_webinar": 25,
+    "reserve_allocation": 50,
+}
+
+MILESTONE_TITLE = {
+    "join_waitlist": "Join Waitlist",
+    "verify_mobile": "Verify Mobile",
+    "complete_kyc": "Complete KYC",
+    "attend_webinar": "Attend Webinar",
+    "reserve_allocation": "Reserve Allocation",
+}
+
+
+def _next_active_milestone(milestones: list) -> Optional[dict]:
+    """First pending milestone, else first upcoming, else None."""
+    for m in milestones:
+        if m["status"] == "pending":
+            return m
+    for m in milestones:
+        if m["status"] == "upcoming":
+            return m
+    return None
+
+
+def _compute_next_reward(milestones: list, balance: int) -> dict:
+    """Single source of truth for what to display in the 'Next Reward' card.
+
+    Three states:
+      - milestone: still completing the onboarding journey
+      - tier: journey done, working toward the next benefits-ladder tier
+      - maxed: at the Elite tier and journey complete
+    """
+    active = _next_active_milestone(milestones)
+    if active:
+        amount = MILESTONE_REWARDS.get(active["id"], 0)
+        return {
+            "kind": "milestone",
+            "amount": amount,
+            "label": MILESTONE_TITLE.get(active["id"], active["id"]),
+            "milestone_id": active["id"],
+            "remaining_steps": sum(1 for m in milestones if m["status"] != "completed"),
+        }
+    nt = next_tier_info(balance)
+    if nt["remaining"] <= 0:
+        return {"kind": "maxed", "amount": 0, "label": "Elite Co-Owner", "tier_name": "Elite Co-Owner"}
+    return {
+        "kind": "tier",
+        "amount": nt["remaining"],
+        "label": f"Reach {nt['name']}",
+        "tier_name": nt["name"],
+        "tier_threshold": nt["threshold"],
+    }
 
 
 # -------------------- Benefits ladder --------------------

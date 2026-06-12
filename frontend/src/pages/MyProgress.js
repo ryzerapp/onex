@@ -6,6 +6,7 @@ import ProgressRing from "@/components/common/ProgressRing";
 import {
   ArrowLeft, Flag, UserPlus, Smartphone, IdCard, Calendar, PieChart,
   CheckCircle2, Gift, Headphones, ChevronDown, ChevronUp, ArrowRight,
+  Trophy, Crown,
 } from "lucide-react";
 
 const iconMap = { "user-plus": UserPlus, smartphone: Smartphone, "id-card": IdCard, calendar: Calendar, "pie-chart": PieChart };
@@ -17,6 +18,82 @@ const STATUS_STYLES = {
   completed: { color: "#22C55E", bg: "#1F3A2D", label: "Completed" },
   pending: { color: "#FACC15", bg: "#3A2F0F", label: "Pending" },
   upcoming: { color: "#71717A", bg: "#1E1F24", label: "Upcoming" },
+};
+
+const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, allDone, onCtaClick }) => {
+  if (!nextReward) return null;
+
+  if (nextReward.kind === "maxed") {
+    return (
+      <div className="onex-card p-6" data-testid="next-reward-card">
+        <div className="flex items-center gap-2 text-[#FACC15]">
+          <Crown size={16} />
+          <span className="text-[13px] font-medium">Elite Status Achieved</span>
+        </div>
+        <div className="mt-5 flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl onex-gold-fill flex items-center justify-center"><Crown size={22} /></div>
+          <div>
+            <div className="text-[20px] font-semibold text-white leading-tight">You{"’"}ve reached the top.</div>
+            <div className="text-[12px] text-zinc-500 mt-1">Every co-owner benefit is unlocked.</div>
+          </div>
+        </div>
+        <button onClick={onCtaClick} className="mt-5 w-full btn-ghost border-[#FACC15]/40 text-[#FACC15]" data-testid="next-reward-elite-cta">
+          See All Benefits <ArrowRight size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  if (nextReward.kind === "tier") {
+    const tierThreshold = nextReward.tier_threshold || 1;
+    const tierPct = Math.min(100, Math.round((balance / tierThreshold) * 100));
+    return (
+      <div className="onex-card p-6" data-testid="next-reward-card">
+        <div className="flex items-center gap-2 text-[#FACC15]">
+          <Trophy size={16} />
+          <span className="text-[13px] font-medium">Next Tier Reward</span>
+        </div>
+        <div className="mt-2 inline-flex items-center gap-2 onex-pill bg-[#22C55E]/15 text-[#22C55E]" data-testid="journey-complete-pill">
+          <CheckCircle2 size={12} /> Journey complete
+        </div>
+        <div className="mt-5 flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
+          <div>
+            <div className="text-[24px] font-semibold text-[#FACC15]">AED {nextReward.amount}</div>
+            <div className="text-[12px] text-zinc-500">to unlock {nextReward.tier_name}</div>
+          </div>
+        </div>
+        <div className="h-2 mt-5 rounded-full bg-[#27272A] overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-[#FACC15] to-[#EAB308]" style={{ width: `${tierPct}%` }} />
+        </div>
+        <div className="text-right text-[11px] text-zinc-500 mt-2 tabular-nums">AED {balance} / AED {tierThreshold}</div>
+        <button onClick={onCtaClick} className="mt-5 w-full btn-gold" data-testid="next-reward-tier-cta">
+          Earn More AED <ArrowRight size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  // milestone kind
+  return (
+    <div className="onex-card p-6" data-testid="next-reward-card">
+      <div className="flex items-center gap-2 text-[#FACC15]"><Gift size={16} /><span className="text-[13px] font-medium">Next Reward</span></div>
+      <div className="mt-5 flex items-center gap-4">
+        <div className="w-16 h-16 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
+        <div>
+          <div className="text-[28px] font-semibold text-[#FACC15]">+AED {nextReward.amount}</div>
+          <div className="text-[12px] text-zinc-500">Complete {nextReward.label}</div>
+        </div>
+      </div>
+      <div className="h-2 mt-5 rounded-full bg-[#27272A] overflow-hidden">
+        <div className="h-full bg-gradient-to-r from-[#FACC15] to-[#EAB308]" style={{ width: `${percent}%` }} />
+      </div>
+      <div className="text-right text-[11px] text-zinc-500 mt-2 tabular-nums">{completedCount} / {total} completed</div>
+      {allDone && (
+        <div className="mt-3 text-[12px] text-[#22C55E]">Journey complete — keep earning AED to unlock the next tier.</div>
+      )}
+    </div>
+  );
 };
 
 const MyProgress = () => {
@@ -128,20 +205,15 @@ const MyProgress = () => {
         </div>
 
         <div className="space-y-6">
-          <div className="onex-card p-6" data-testid="next-reward-card">
-            <div className="flex items-center gap-2 text-[#FACC15]"><Gift size={16} /><span className="text-[13px] font-medium">Next Reward</span></div>
-            <div className="mt-5 flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
-              <div>
-                <div className="text-[28px] font-semibold text-[#FACC15]">+AED 50</div>
-                <div className="text-[12px] text-zinc-500">Complete {data.upcoming_count} more steps</div>
-              </div>
-            </div>
-            <div className="h-2 mt-5 rounded-full bg-[#27272A] overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-[#FACC15] to-[#EAB308]" style={{ width: `${data.percent}%` }} />
-            </div>
-            <div className="text-right text-[11px] text-zinc-500 mt-2 tabular-nums">{data.completed_count} / {data.total} completed</div>
-          </div>
+          <NextRewardCard
+            nextReward={data.next_reward}
+            percent={data.percent}
+            completedCount={data.completed_count}
+            total={data.total}
+            balance={data.aed_balance}
+            allDone={data.all_milestones_done}
+            onCtaClick={() => navigate("/benefits-ladder")}
+          />
           <div className="onex-card p-6" data-testid="need-help-card">
             <div className="flex items-center gap-2 text-[#A78BFA]"><Headphones size={16} /><span className="text-[13px] font-medium">Need Help?</span></div>
             <div className="text-white text-[15px] mt-4">We’re here to help you</div>
