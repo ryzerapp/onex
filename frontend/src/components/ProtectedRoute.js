@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const redirectState = useMemo(() => ({ from: location }), [location]);
 
   if (loading) {
     return (
@@ -14,7 +15,7 @@ const ProtectedRoute = ({ children }) => {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (!user) return <Navigate to="/login" replace state={redirectState} />;
   return children;
 };
 

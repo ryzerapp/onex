@@ -25,7 +25,7 @@ const DubaiProperties = () => {
   };
   const save = async (p) => {
     try { const { data } = await api.post("/properties/save", { property_id: p.id }); toast.success(data.saved ? "Saved to favorites" : "Removed from favorites"); load(category); }
-    catch (e) { /* ignore */ }
+    catch (e) { console.debug("[properties] save failed", e); }
   };
 
   const savedCount = useMemo(() => properties.filter(p => p.saved).length, [properties]);

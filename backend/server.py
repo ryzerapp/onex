@@ -603,6 +603,7 @@ async def save_allocation_interests(payload: InterestSelection, user: CurrentUse
 async def list_webinars(user: CurrentUser, tab: Optional[str] = "upcoming"):
     regs = await db.webinar_registrations.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(50)
     reg_ids = {r["webinar_id"] for r in regs}
+    webinars: list = []
     if tab == "registered":
         ids = list(reg_ids)
         webinars = await db.webinars.find({"id": {"$in": ids}}, {"_id": 0}).to_list(50)

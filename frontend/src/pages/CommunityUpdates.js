@@ -10,8 +10,8 @@ const CommunityUpdates = () => {
   const load = () => api.get("/community-updates").then(({ data }) => setUpdates(data.updates));
   useEffect(() => { load(); }, []);
 
-  const like = async (u) => { try { await api.post("/community-updates/like", { update_id: u.id }); load(); } catch (e) { /* ignore */ } };
-  const save = async (u) => { try { const { data } = await api.post("/community-updates/save", { update_id: u.id }); toast.success(data.saved ? "Saved" : "Removed"); load(); } catch (e) { /* ignore */ } };
+  const like = async (u) => { try { await api.post("/community-updates/like", { update_id: u.id }); load(); } catch (e) { console.debug("[updates] like failed", e); } };
+  const save = async (u) => { try { const { data } = await api.post("/community-updates/save", { update_id: u.id }); toast.success(data.saved ? "Saved" : "Removed"); load(); } catch (e) { console.debug("[updates] save failed", e); } };
   const share = (u) => { navigator.clipboard?.writeText(`OneX Club — ${u.title}`); toast.success("Update copied to share"); };
 
   return (

@@ -20,7 +20,7 @@ const InviteEarn = () => {
 
   const share = async (channel) => {
     try { await api.post("/referrals/share", { channel }); toast.success(`Shared via ${channel}`); }
-    catch (e) { /* ignore */ }
+    catch (e) { console.debug("[invite] share failed", e); }
   };
   const copyLink = () => {
     navigator.clipboard?.writeText(data.referral_link);
