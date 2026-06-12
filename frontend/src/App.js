@@ -1,53 +1,59 @@
-import { useEffect } from "react";
+import React from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import AppLayout from "@/components/layout/AppLayout";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import Login from "@/pages/Login";
+import AuthCallback from "@/pages/AuthCallback";
+import Dashboard from "@/pages/Dashboard";
+import MyProgress from "@/pages/MyProgress";
+import BenefitsLadder from "@/pages/BenefitsLadder";
+import DubaiProperties from "@/pages/DubaiProperties";
+import AllocationInterests from "@/pages/AllocationInterests";
+import WebinarEvents from "@/pages/WebinarEvents";
+import InviteEarn from "@/pages/InviteEarn";
+import Leaderboard from "@/pages/Leaderboard";
+import CommunityUpdates from "@/pages/CommunityUpdates";
+import CoOwnerBenefits from "@/pages/CoOwnerBenefits";
+import SupportCenter from "@/pages/SupportCenter";
+import Settings from "@/pages/Settings";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
+const AppRouter = () => {
+  const location = useLocation();
+  if (location.hash?.includes("session_id=")) {
+    return <AuthCallback />;
+  }
   return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/progress" element={<MyProgress />} />
+        <Route path="/benefits-ladder" element={<BenefitsLadder />} />
+        <Route path="/properties" element={<DubaiProperties />} />
+        <Route path="/allocation-interests" element={<AllocationInterests />} />
+        <Route path="/webinars" element={<WebinarEvents />} />
+        <Route path="/invite" element={<InviteEarn />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/community" element={<CommunityUpdates />} />
+        <Route path="/co-owner-benefits" element={<CoOwnerBenefits />} />
+        <Route path="/support" element={<SupportCenter />} />
+        <Route path="/settings" element={<Settings />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
   );
 };
 
 function App() {
   return (
-    <div className="App">
+    <div className="App" data-testid="app-root">
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
+        <AuthProvider>
+          <AppRouter />
+        </AuthProvider>
       </BrowserRouter>
     </div>
   );

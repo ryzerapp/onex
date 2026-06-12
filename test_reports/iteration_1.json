@@ -1,0 +1,53 @@
+{
+  "summary": "First iteration full-stack QA of OneX Club. All 27 backend pytest cases pass (100%). All 12 frontend pages render correctly under seeded session, sidebar shows 12 nav items + AED balance + profile + logout, Join Waitlist transitions to 'Waitlist Joined', Sign Out redirects to /login. Login button has correct data-testid and text 'Continue with Google'. Minor naming/markup discrepancies vs spec only.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/session", "issue": "Uses deprecated FastAPI @app.on_event('startup'/'shutdown') — switch to lifespan handlers for FastAPI >=0.110"},
+      {"endpoint": "/api/progress/complete", "issue": "MilestoneAction has dead branch (activated_next flag never used); second loop always promotes the first 'upcoming' to 'pending' which may double-promote if multiple upcoming exist. Works correctly for current 5-milestone flow but logic is fragile."},
+      {"endpoint": "/api/dashboard", "issue": "stats.balance_this_week is hardcoded to 35 — not derived from activity_log"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Login.js", "issue": "login-google-btn is a <button> with no href and no inline onclick attribute. The review request asked to verify 'href format pointing to auth.emergentagent.com'. The button works via a React onClick handler (not statically introspectable), so navigation cannot be verified without triggering OAuth. Recommend rendering as <a href='https://auth.emergentagent.com/?redirect=...'> so markup-level inspection passes and the link is crawlable.", "selector": "[data-testid=login-google-btn]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "naming_mismatches_vs_review_spec": [
+    {"expected": "data-testid='join-waitlist-btn-<propId>'", "actual": "data-testid='property-join-<propId>'", "impact": "cosmetic, functionality identical"},
+    {"expected": "data-testid='category-card-<id>'", "actual": "data-testid='category-<id>' (e.g. category-cat_residential)", "impact": "cosmetic"},
+    {"expected": "data-testid='logout-btn'", "actual": "data-testid='sidebar-logout-btn' and 'settings-logout-btn'", "impact": "cosmetic, both work"}
+  ],
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Consider switching Login 'Continue with Google' to an <a> element so the href to auth.emergentagent.com is statically present (currently click handler only).",
+    "Align data-testid naming with review spec for join waitlist / category cards / logout (minor) — or update the spec.",
+    "Replace deprecated @app.on_event with FastAPI lifespan context manager.",
+    "Derive dashboard.stats.balance_this_week from activity_log instead of hardcoded 35."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~860 lines — borderline; consider splitting into modules (auth, dashboard, properties, webinars, social, settings) for maintainability.",
+    "Leaderboard sort recomputes pool on every request — fine for seed scale but should be paginated/cached if user count grows.",
+    "_user_rank() duplicates leaderboard pool-building logic from /api/leaderboard — extract a shared helper to honour DRY.",
+    "No rate limiting on POST /api/support/contact, /api/referrals/share, /api/properties/waitlist — trivially spam-able.",
+    "Bearer token + cookie auth coexist correctly; expiry parsing handles both naive and aware datetimes — good.",
+    "All endpoints exclude _id properly via projection — clean.",
+    "All write endpoints return {ok: true} as expected; toggles return new state — UI integration straightforward."
+  ],
+  "updated_files": [
+    "/app/backend/tests/__init__.py",
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (27/27)", "frontend": "~95% (12/12 pages render, all interactive flows work; only the login href markup is a minor deviation)"},
+  "test_credentials": "Bearer test_session_1781303183733 (user_qa_1781303183733 / qa.surya.1781303183733@onex.club, tier Cadet, AED 285). Auto-seeded via mongosh snippet in /app/auth_testing.md.",
+  "seed_data_creation": "None new — used existing seeded session and DB seeds.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression tests live at /app/backend/tests/backend_test.py. Run with: pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml. They expect REACT_APP_BACKEND_URL + bearer token defaults. For Playwright, set cookie session_token=<token>, domain=exclusive-members-1.preview.emergentagent.com, httpOnly+secure+sameSite=None. Page testids follow pattern '<page>-<element>' (e.g. property-join-<propId>, sidebar-logout-btn, settings-save-btn).",
+  "rca of the issue": "N/A — no critical issues found. The 'login href is None' observation is by design (React SPA button with handler), not a bug. Suggested cosmetic improvement only."
+}

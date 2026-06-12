@@ -1,89 +1,862 @@
-from fastapi import FastAPI, APIRouter
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
-from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
+"""OneX Club™ Backend — FastAPI + MongoDB.
 
+Implements:
+- Emergent Google OAuth (session-data exchange + cookie)
+- User profile, AED balance, tier, milestones
+- Properties, allocation interests, webinars, leaderboard, referrals,
+  community updates, co-owner benefits, support, settings
+- Mock data seeding on startup
+"""
+from __future__ import annotations
+
+import logging
+import os
+import uuid
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import List, Optional, Annotated
+
+import httpx
+from dotenv import load_dotenv
+from fastapi import APIRouter, Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field
+from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+log = logging.getLogger("onex")
+
+mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ["DB_NAME"]]
 
-# Create the main app without a prefix
-app = FastAPI()
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
+app = FastAPI(title="OneX Club API")
+api = APIRouter(prefix="/api")
 
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+# -------------------- Models --------------------
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
 
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
+class User(BaseModel):
+    user_id: str
+    email: str
+    name: str
+    picture: Optional[str] = None
+    tier: str = "Cadet"
+    aed_balance: int = 100
+    referral_code: str
+    referred_by: Optional[str] = None
+    created_at: str = Field(default_factory=_now)
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+class SessionExchange(BaseModel):
+    session_id: str
 
-# Include the router in the main app
-app.include_router(api_router)
+
+# -------------------- Tier helpers --------------------
+TIERS = [
+    {"name": "Co-Owner Member", "threshold": 500, "key": "co_owner_member"},
+    {"name": "Priority Co-Owner", "threshold": 2500, "key": "priority"},
+    {"name": "Co-Owner Circle", "threshold": 5000, "key": "circle"},
+    {"name": "Elite Co-Owner", "threshold": 10000, "key": "elite"},
+]
+
+
+def compute_tier(balance: int) -> str:
+    if balance < 500:
+        return "Cadet"
+    name = "Cadet"
+    for t in TIERS:
+        if balance >= t["threshold"]:
+            name = t["name"]
+    return name
+
+
+def next_tier_info(balance: int):
+    for t in TIERS:
+        if balance < t["threshold"]:
+            return {"name": t["name"], "threshold": t["threshold"], "remaining": t["threshold"] - balance}
+    return {"name": "Elite Co-Owner", "threshold": 10000, "remaining": 0}
+
+
+# -------------------- Auth helpers --------------------
+async def get_current_user(
+    session_token: Optional[str] = Cookie(default=None),
+    authorization: Optional[str] = Header(default=None),
+) -> dict:
+    token = session_token
+    if not token and authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    expires_at = session.get("expires_at")
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="Session expired")
+    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+CurrentUser = Annotated[dict, Depends(get_current_user)]
+
+
+# -------------------- Seed data --------------------
+PROPERTY_SEED = [
+    {
+        "id": "prop_palm_jumeirah_villa",
+        "name": "Palm Jumeirah Villa Collection",
+        "location": "Palm Jumeirah, Dubai",
+        "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85",
+        "category": "luxury",
+        "min_investment": 200000,
+        "yield_low": 12,
+        "yield_high": 16,
+        "spots_available": 23,
+        "spots_total": 100,
+        "waitlist_count": 245,
+        "description": "Ultra-luxury villas with private beach access and world-class amenities.",
+        "status": "Coming Soon",
+        "launch_date": "2026-05-20T10:30:00Z",
+    },
+    {
+        "id": "prop_dubai_marina_residences",
+        "name": "Dubai Marina Residences",
+        "location": "Dubai Marina, Dubai",
+        "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "residential",
+        "min_investment": 150000,
+        "yield_low": 10,
+        "yield_high": 14,
+        "spots_available": 41,
+        "spots_total": 150,
+        "waitlist_count": 189,
+        "description": "Premium waterfront living with high rental demand and strong ROI.",
+        "status": "Coming Soon",
+        "launch_date": "2026-06-12T10:00:00Z",
+    },
+    {
+        "id": "prop_business_bay_offices",
+        "name": "Business Bay Offices",
+        "location": "Business Bay, Dubai",
+        "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "commercial",
+        "min_investment": 150000,
+        "yield_low": 9,
+        "yield_high": 12,
+        "spots_available": 60,
+        "spots_total": 200,
+        "waitlist_count": 139,
+        "description": "Grade A commercial spaces in Dubai's fastest-growing business district.",
+        "status": "Coming Soon",
+        "launch_date": "2026-07-08T11:00:00Z",
+    },
+    {
+        "id": "prop_jbr_airbnb_loft",
+        "name": "JBR Airbnb Lofts",
+        "location": "Jumeirah Beach Residence, Dubai",
+        "image": "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "airbnb",
+        "min_investment": 120000,
+        "yield_low": 14,
+        "yield_high": 18,
+        "spots_available": 18,
+        "spots_total": 60,
+        "waitlist_count": 312,
+        "description": "Short-stay rental lofts steps from the beach—peak Dubai tourism yield.",
+        "status": "Coming Soon",
+        "launch_date": "2026-04-22T09:00:00Z",
+    },
+    {
+        "id": "prop_downtown_hospitality",
+        "name": "Downtown Hospitality Suites",
+        "location": "Downtown, Dubai",
+        "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85",
+        "category": "hospitality",
+        "min_investment": 180000,
+        "yield_low": 11,
+        "yield_high": 15,
+        "spots_available": 28,
+        "spots_total": 90,
+        "waitlist_count": 167,
+        "description": "Serviced hospitality suites adjacent to Burj Khalifa and Dubai Mall.",
+        "status": "Coming Soon",
+        "launch_date": "2026-08-30T10:00:00Z",
+    },
+]
+
+CATEGORY_SEED = [
+    {"id": "cat_residential", "name": "Residential", "description": "Apartments and residences in prime Dubai locations.", "badge": "High Demand", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"},
+    {"id": "cat_airbnb", "name": "Airbnb Rentals", "description": "Short-term rental properties with high returns.", "badge": "High Demand", "image": "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"},
+    {"id": "cat_commercial", "name": "Commercial", "description": "Offices and retail spaces in growing business hubs.", "badge": "Stable Growth", "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"},
+    {"id": "cat_luxury", "name": "Luxury Villas", "description": "High-end villas for luxury living and premium returns.", "badge": "Premium", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85"},
+    {"id": "cat_hospitality", "name": "Hospitality", "description": "Hotels and serviced apartments in top tourist destinations.", "badge": "Long-Term Growth", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"},
+]
+
+WEBINAR_SEED = [
+    {"id": "wb_dubai_airbnb_master", "title": "Dubai Airbnb Masterclass", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-03-12T17:00:00Z", "duration_minutes": 60, "attendees": 412, "aed_reward": 25, "description": "Learn how to maximise yield from Dubai short-stay rentals.", "status": "upcoming", "featured": True},
+    {"id": "wb_yield_strategies", "title": "High-Yield Allocation Strategies", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-03-26T16:30:00Z", "duration_minutes": 75, "attendees": 268, "aed_reward": 25, "description": "Inside the OneX selection framework for top-tier yield assets.", "status": "upcoming"},
+    {"id": "wb_palm_villa_briefing", "title": "Palm Jumeirah Villa Briefing", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-04-08T17:00:00Z", "duration_minutes": 45, "attendees": 198, "aed_reward": 25, "description": "Allocation walkthrough for our flagship Palm Jumeirah collection.", "status": "upcoming"},
+    {"id": "wb_market_outlook", "title": "Dubai Market Outlook 2026", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/17238022/pexels-photo-17238022.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-01-14T17:00:00Z", "duration_minutes": 60, "attendees": 612, "aed_reward": 0, "description": "Macro analysis of Dubai real estate cycles.", "status": "recorded", "recording_url": "https://example.com/onex/market-outlook"},
+    {"id": "wb_co_ownership_101", "title": "Co-Ownership 101", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2025-12-05T17:00:00Z", "duration_minutes": 50, "attendees": 845, "aed_reward": 0, "description": "Foundational webinar on the OneX co-ownership model.", "status": "recorded", "recording_url": "https://example.com/onex/co-ownership-101"},
+]
+
+UPDATES_SEED = [
+    {"id": "upd_palm_launch", "type": "launch", "title": "Palm Jumeirah Villa Collection waitlist now live", "body": "Our flagship Palm Jumeirah allocation has opened its priority waitlist. Allocation begins May 2026.", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "author": "Karthik Reddy", "author_avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "published_at": "2026-02-14T08:00:00Z", "likes": 384, "shares": 71},
+    {"id": "upd_founder_letter", "type": "founder", "title": "A note from our founder", "body": "We crossed 12,000 waitlist members this month—thank you for trusting OneX to redefine Dubai co-ownership.", "image": "https://images.pexels.com/photos/17238022/pexels-photo-17238022.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "author": "Karthik Reddy", "author_avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "published_at": "2026-02-10T09:00:00Z", "likes": 612, "shares": 142},
+    {"id": "upd_market_insight", "type": "insight", "title": "Why Dubai short-stays are outperforming", "body": "Occupancy hit 83% across our shortlisted Airbnb assets in Q4 2025. Read the full breakdown.", "image": "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "author": "Aisha Mohammed", "author_avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "published_at": "2026-02-02T08:00:00Z", "likes": 251, "shares": 38},
+    {"id": "upd_milestone", "type": "milestone", "title": "OneX Club crosses 12,000 members", "body": "A new community milestone—powered entirely by member referrals.", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "author": "OneX Team", "author_avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "published_at": "2026-01-25T09:00:00Z", "likes": 198, "shares": 27},
+]
+
+LEADERBOARD_SEED = [
+    {"name": "Hassan Al-Mansouri", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 8420, "referrals": 38, "tier": "Co-Owner Circle"},
+    {"name": "Priya Nair", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 6210, "referrals": 27, "tier": "Co-Owner Circle"},
+    {"name": "Rahul Mehta", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 4980, "referrals": 19, "tier": "Priority Co-Owner"},
+    {"name": "Sarah Lim", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 3420, "referrals": 14, "tier": "Priority Co-Owner"},
+    {"name": "Omar Khan", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2840, "referrals": 11, "tier": "Priority Co-Owner"},
+    {"name": "Maya Iyer", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2110, "referrals": 9, "tier": "Priority Co-Owner"},
+    {"name": "Daniel Park", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1685, "referrals": 7, "tier": "Co-Owner Member"},
+    {"name": "Anaya Sharma", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1240, "referrals": 5, "tier": "Co-Owner Member"},
+]
+
+CO_OWNER_BENEFITS_SEED = [
+    {"id": "ben_priority_alloc", "title": "Priority Allocation Access", "description": "24-hour early window on every new property launch.", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Co-Owner Member", "unlock_threshold": 500},
+    {"id": "ben_executive_qa", "title": "Executive Q&A Sessions", "description": "Monthly closed-door sessions with the OneX leadership.", "image": "https://images.pexels.com/photos/5778470/pexels-photo-5778470.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Priority Co-Owner", "unlock_threshold": 2500},
+    {"id": "ben_airport_transfer", "title": "Complimentary Airport Transfers", "description": "Chauffeured airport pickup on every Dubai visit.", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Priority Co-Owner", "unlock_threshold": 2500},
+    {"id": "ben_founder_briefing", "title": "Private Founder Briefings", "description": "Invite-only briefings with founders ahead of every launch.", "image": "https://images.unsplash.com/photo-1661354421565-74ffd9650918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzgxMzAxOTAxfDA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Co-Owner Circle", "unlock_threshold": 5000},
+    {"id": "ben_annual_stay", "title": "Complimentary Annual Stays", "description": "Two nights every year in your favorite OneX asset.", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Co-Owner Circle", "unlock_threshold": 5000},
+    {"id": "ben_relationship_manager", "title": "Dedicated Relationship Manager", "description": "A senior OneX advisor on call, anytime.", "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Elite Co-Owner", "unlock_threshold": 10000},
+    {"id": "ben_advisory_council", "title": "Advisory Council Access", "description": "Help shape the OneX roadmap as part of our advisory council.", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Elite Co-Owner", "unlock_threshold": 10000},
+]
+
+FAQS_SEED = [
+    {"id": "faq_1", "q": "What is OneX Club?", "a": "OneX Club is an invitation-only co-ownership community for premium Dubai real estate. We curate launches, educate members, and provide priority allocation access."},
+    {"id": "faq_2", "q": "How does AED Balance work?", "a": "AED Balance reduces the effective entry amount on future allocations. You grow it by attending webinars, inviting friends, and becoming a co-owner."},
+    {"id": "faq_3", "q": "When does my first property allocation open?", "a": "Our flagship Palm Jumeirah Villa Collection opens May 2026. Allocation order is based on tier and waitlist position."},
+    {"id": "faq_4", "q": "Is my data secure?", "a": "Yes. We use bank-grade encryption and never share your data with third parties without explicit consent."},
+    {"id": "faq_5", "q": "How do I become a co-owner?", "a": "Complete your profile, attend at least one webinar, reserve your allocation interest, and you'll be notified the moment a matching property opens."},
+]
+
+
+async def seed_data():
+    if await db.properties.count_documents({}) == 0:
+        await db.properties.insert_many([dict(p) for p in PROPERTY_SEED])
+    if await db.categories.count_documents({}) == 0:
+        await db.categories.insert_many([dict(c) for c in CATEGORY_SEED])
+    if await db.webinars.count_documents({}) == 0:
+        await db.webinars.insert_many([dict(w) for w in WEBINAR_SEED])
+    if await db.community_updates.count_documents({}) == 0:
+        await db.community_updates.insert_many([dict(u) for u in UPDATES_SEED])
+    if await db.leaderboard_seed.count_documents({}) == 0:
+        await db.leaderboard_seed.insert_many([dict(lb) for lb in LEADERBOARD_SEED])
+    if await db.co_owner_benefits.count_documents({}) == 0:
+        await db.co_owner_benefits.insert_many([dict(b) for b in CO_OWNER_BENEFITS_SEED])
+    if await db.faqs.count_documents({}) == 0:
+        await db.faqs.insert_many([dict(f) for f in FAQS_SEED])
+    log.info("seed: complete")
+
+
+@app.on_event("startup")
+async def _startup():
+    await seed_data()
+
+
+# -------------------- Activity helper --------------------
+async def add_activity(user_id: str, kind: str, title: str, reward: int = 0):
+    await db.activity_log.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "kind": kind,
+        "title": title,
+        "reward": reward,
+        "created_at": _now(),
+    })
+
+
+async def grant_aed(user_id: str, amount: int):
+    if amount == 0:
+        return
+    await db.users.update_one({"user_id": user_id}, {"$inc": {"aed_balance": amount}})
+    new_user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    new_tier = compute_tier(new_user["aed_balance"])
+    if new_tier != new_user.get("tier"):
+        await db.users.update_one({"user_id": user_id}, {"$set": {"tier": new_tier}})
+
+
+# -------------------- Auth routes --------------------
+EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+
+
+def _make_referral_code(name: str) -> str:
+    base = "".join(c for c in name.lower() if c.isalnum())[:6] or "onex"
+    return f"{base}-{uuid.uuid4().hex[:6]}"
+
+
+async def ensure_user_milestones(user_id: str):
+    if await db.user_milestones.find_one({"user_id": user_id}):
+        return
+    milestones = [
+        {"id": "join_waitlist", "title": "Join Waitlist", "subtitle": "You have successfully joined the waitlist.", "status": "completed", "icon": "user-plus", "completed_at": _now()},
+        {"id": "verify_mobile", "title": "Verify Mobile", "subtitle": "Complete mobile verification to unlock next steps.", "status": "pending", "icon": "smartphone"},
+        {"id": "complete_kyc", "title": "Complete KYC", "subtitle": "Verify your identity to become investment ready.", "status": "pending", "icon": "id-card"},
+        {"id": "attend_webinar", "title": "Attend Webinar", "subtitle": "Attend an upcoming webinar to learn more.", "status": "pending", "icon": "calendar"},
+        {"id": "reserve_allocation", "title": "Reserve Allocation Interest", "subtitle": "Reserve your allocation preference.", "status": "upcoming", "icon": "pie-chart"},
+    ]
+    await db.user_milestones.insert_one({"user_id": user_id, "milestones": milestones})
+
+
+@api.post("/auth/session")
+async def auth_session(payload: SessionExchange, response: Response):
+    async with httpx.AsyncClient(timeout=15) as http:
+        r = await http.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": payload.session_id})
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid session_id")
+    data = r.json()
+    email = data["email"]
+    name = data.get("name") or email.split("@")[0]
+    picture = data.get("picture")
+    session_token = data["session_token"]
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        user_doc = {
+            "user_id": user_id,
+            "email": email,
+            "name": name,
+            "picture": picture,
+            "tier": "Cadet",
+            "aed_balance": 100,
+            "referral_code": _make_referral_code(name),
+            "referred_by": None,
+            "created_at": _now(),
+        }
+        await db.users.insert_one(user_doc)
+        await ensure_user_milestones(user_id)
+        await add_activity(user_id, "join", "Joined the OneX waitlist", reward=100)
+        user = user_doc
+    else:
+        if picture and not user.get("picture"):
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"picture": picture}})
+            user["picture"] = picture
+        await ensure_user_milestones(user["user_id"])
+
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.user_sessions.insert_one({
+        "user_id": user["user_id"],
+        "session_token": session_token,
+        "expires_at": expires_at,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        max_age=7 * 24 * 60 * 60,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+    )
+    return {"user": user}
+
+
+@api.get("/auth/me")
+async def auth_me(user: CurrentUser):
+    return {"user": user}
+
+
+@api.post("/auth/logout")
+async def auth_logout(response: Response, session_token: Optional[str] = Cookie(default=None)):
+    if session_token:
+        await db.user_sessions.delete_one({"session_token": session_token})
+    response.delete_cookie("session_token", path="/", samesite="none", secure=True)
+    return {"ok": True}
+
+
+# -------------------- Dashboard / progress --------------------
+@api.get("/dashboard")
+async def dashboard(user: CurrentUser):
+    ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    milestones = ms_doc["milestones"] if ms_doc else []
+    completed = [m for m in milestones if m["status"] == "completed"]
+    pending = next((m for m in milestones if m["status"] == "pending"), None)
+    upcoming = next((m for m in milestones if m["status"] == "upcoming"), None)
+    next_milestone = pending or upcoming
+    next_tier = next_tier_info(user["aed_balance"])
+
+    spotlight_doc = await db.properties.find_one({}, {"_id": 0}, sort=[("launch_date", 1)])
+
+    next_webinar = await db.webinars.find_one({"status": "upcoming"}, {"_id": 0}, sort=[("date", 1)])
+
+    waitlist_count = await db.waitlist_entries.count_documents({"user_id": user["user_id"]})
+    interests_count = await db.allocation_expressions.count_documents({"user_id": user["user_id"]})
+    webinars_attended = await db.webinar_registrations.count_documents({"user_id": user["user_id"], "attended": True})
+    friends_invited = await db.referrals.count_documents({"referrer_id": user["user_id"]})
+
+    recent_activity = await db.activity_log.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(8)
+
+    lb_rank = await _user_rank(user["user_id"])
+
+    return {
+        "user": user,
+        "milestones": milestones,
+        "milestones_completed": len(completed),
+        "milestones_total": len(milestones),
+        "next_milestone": next_milestone,
+        "next_tier": next_tier,
+        "spotlight_property": spotlight_doc,
+        "next_webinar": next_webinar,
+        "stats": {
+            "aed_balance": user["aed_balance"],
+            "balance_this_week": 35,
+            "waitlist_count": waitlist_count,
+            "interests_count": interests_count,
+            "interests_total": 5,
+            "webinars_attended": webinars_attended,
+            "friends_invited": friends_invited,
+        },
+        "recent_activity": recent_activity,
+        "leaderboard_rank": lb_rank,
+    }
+
+
+@api.get("/progress")
+async def progress(user: CurrentUser):
+    ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    milestones = ms_doc["milestones"] if ms_doc else []
+    completed = [m for m in milestones if m["status"] == "completed"]
+    pending = [m for m in milestones if m["status"] == "pending"]
+    upcoming = [m for m in milestones if m["status"] == "upcoming"]
+    percent = int(round(100 * len(completed) / max(len(milestones), 1)))
+    return {
+        "milestones": milestones,
+        "percent": percent,
+        "completed_count": len(completed),
+        "total": len(milestones),
+        "upcoming_count": len(pending) + len(upcoming),
+        "to_next_reward": max(0, next_tier_info(user["aed_balance"])["remaining"]),
+    }
+
+
+class MilestoneAction(BaseModel):
+    milestone_id: str
+
+
+@api.post("/progress/complete")
+async def complete_milestone(payload: MilestoneAction, user: CurrentUser):
+    ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]})
+    if not ms_doc:
+        raise HTTPException(status_code=404, detail="Milestones not found")
+    rewards = {"verify_mobile": 25, "complete_kyc": 50, "attend_webinar": 25, "reserve_allocation": 50}
+    updated = []
+    activated_next = False
+    granted = 0
+    for m in ms_doc["milestones"]:
+        if m["id"] == payload.milestone_id and m["status"] != "completed":
+            m["status"] = "completed"
+            m["completed_at"] = _now()
+            granted = rewards.get(payload.milestone_id, 0)
+        elif m["status"] == "upcoming" and not activated_next and m["id"] != payload.milestone_id:
+            # promote next upcoming to pending after we complete current
+            pass
+        updated.append(m)
+    # ensure earliest non-completed becomes pending
+    for m in updated:
+        if m["status"] == "upcoming":
+            m["status"] = "pending"
+            break
+    await db.user_milestones.update_one({"user_id": user["user_id"]}, {"$set": {"milestones": updated}})
+    if granted:
+        await grant_aed(user["user_id"], granted)
+        await add_activity(user["user_id"], "milestone", f"Completed: {payload.milestone_id.replace('_', ' ').title()}", granted)
+    return {"ok": True, "granted": granted}
+
+
+# -------------------- Benefits ladder --------------------
+@api.get("/benefits-ladder")
+async def benefits_ladder(user: CurrentUser):
+    balance = user["aed_balance"]
+    current_tier = compute_tier(balance)
+    next_tier = next_tier_info(balance)
+    return {
+        "balance": balance,
+        "total_earned": balance,
+        "total_used": 0,
+        "current_tier": current_tier,
+        "next_tier": next_tier,
+        "tiers": [
+            {"level": 1, "name": "Co-Owner Member", "threshold": 500, "benefits": ["Priority allocation access", "Exclusive webinars", "AED balance perks"]},
+            {"level": 2, "name": "Priority Co-Owner", "threshold": 2500, "benefits": ["24-hour priority access to new allocations", "Exclusive webinars with executive team", "Better entry pricing on selected properties", "Priority room selection & allocation"]},
+            {"level": 3, "name": "Co-Owner Circle", "threshold": 5000, "benefits": ["Airport transfers", "Complimentary annual stays", "Private founder briefings"]},
+            {"level": 4, "name": "Elite Co-Owner", "threshold": 10000, "benefits": ["Dedicated relationship manager", "Advisory council access", "Invite-only events"]},
+        ],
+        "ways_to_earn": [
+            {"id": "attend_webinar", "title": "Attend Webinar", "aed": 25, "icon": "calendar"},
+            {"id": "invite_friend", "title": "Invite Friend", "aed": 50, "icon": "user-plus"},
+            {"id": "friend_kyc", "title": "Friend Completes KYC", "aed": 100, "icon": "shield-check"},
+            {"id": "reserve_allocation", "title": "Reserve Allocation", "aed": 50, "icon": "home"},
+            {"id": "become_coowner", "title": "Become Co-Owner", "aed": 500, "icon": "building-2"},
+        ],
+    }
+
+
+# -------------------- Properties --------------------
+@api.get("/properties")
+async def list_properties(user: CurrentUser, category: Optional[str] = None):
+    query: dict = {}
+    if category and category != "all":
+        query["category"] = category
+    props = await db.properties.find(query, {"_id": 0}).to_list(50)
+    saved = await db.saved_properties.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(50)
+    saved_ids = {s["property_id"] for s in saved}
+    waitlisted = await db.waitlist_entries.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(50)
+    waitlisted_ids = {w["property_id"] for w in waitlisted}
+    for p in props:
+        p["saved"] = p["id"] in saved_ids
+        p["joined_waitlist"] = p["id"] in waitlisted_ids
+    return {"properties": props}
+
+
+class PropertyAction(BaseModel):
+    property_id: str
+
+
+@api.post("/properties/waitlist")
+async def join_property_waitlist(payload: PropertyAction, user: CurrentUser):
+    existing = await db.waitlist_entries.find_one({"user_id": user["user_id"], "property_id": payload.property_id})
+    if existing:
+        return {"ok": True, "already": True}
+    await db.waitlist_entries.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "property_id": payload.property_id,
+        "created_at": _now(),
+    })
+    prop = await db.properties.find_one({"id": payload.property_id}, {"_id": 0})
+    if prop:
+        await db.properties.update_one({"id": payload.property_id}, {"$inc": {"waitlist_count": 1}})
+        await add_activity(user["user_id"], "waitlist", f"Joined waitlist for {prop['name']}", 0)
+    return {"ok": True}
+
+
+@api.post("/properties/save")
+async def save_property(payload: PropertyAction, user: CurrentUser):
+    existing = await db.saved_properties.find_one({"user_id": user["user_id"], "property_id": payload.property_id})
+    if existing:
+        await db.saved_properties.delete_one({"user_id": user["user_id"], "property_id": payload.property_id})
+        return {"ok": True, "saved": False}
+    await db.saved_properties.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "property_id": payload.property_id,
+        "created_at": _now(),
+    })
+    return {"ok": True, "saved": True}
+
+
+# -------------------- Allocation interests --------------------
+@api.get("/allocation-interests")
+async def get_allocation_interests(user: CurrentUser):
+    cats = await db.categories.find({}, {"_id": 0}).to_list(50)
+    selection = await db.user_allocation_interests.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    selected_ids = selection["category_ids"] if selection else []
+    return {"categories": cats, "selected_ids": selected_ids}
+
+
+class InterestSelection(BaseModel):
+    category_ids: List[str]
+
+
+@api.post("/allocation-interests")
+async def save_allocation_interests(payload: InterestSelection, user: CurrentUser):
+    await db.user_allocation_interests.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"category_ids": payload.category_ids, "updated_at": _now()}},
+        upsert=True,
+    )
+    # Record an expression for each selected category (idempotent)
+    for cid in payload.category_ids:
+        await db.allocation_expressions.update_one(
+            {"user_id": user["user_id"], "category_id": cid},
+            {"$set": {"created_at": _now()}},
+            upsert=True,
+        )
+    await add_activity(user["user_id"], "interest", "Allocation interests saved", 0)
+    return {"ok": True}
+
+
+# -------------------- Webinars --------------------
+@api.get("/webinars")
+async def list_webinars(user: CurrentUser, tab: Optional[str] = "upcoming"):
+    regs = await db.webinar_registrations.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(50)
+    reg_ids = {r["webinar_id"] for r in regs}
+    if tab == "registered":
+        ids = list(reg_ids)
+        webinars = await db.webinars.find({"id": {"$in": ids}}, {"_id": 0}).to_list(50)
+    elif tab == "recorded":
+        webinars = await db.webinars.find({"status": "recorded"}, {"_id": 0}).to_list(50)
+    else:
+        webinars = await db.webinars.find({"status": "upcoming"}, {"_id": 0}).sort("date", 1).to_list(50)
+    for w in webinars:
+        w["registered"] = w["id"] in reg_ids
+    featured = await db.webinars.find_one({"featured": True}, {"_id": 0})
+    return {
+        "webinars": webinars,
+        "featured": featured,
+        "summary": {
+            "attended": await db.webinar_registrations.count_documents({"user_id": user["user_id"], "attended": True}),
+            "registered": len(reg_ids),
+        },
+    }
+
+
+class WebinarAction(BaseModel):
+    webinar_id: str
+
+
+@api.post("/webinars/register")
+async def register_webinar(payload: WebinarAction, user: CurrentUser):
+    existing = await db.webinar_registrations.find_one({"user_id": user["user_id"], "webinar_id": payload.webinar_id})
+    if existing:
+        return {"ok": True, "already": True}
+    await db.webinar_registrations.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "webinar_id": payload.webinar_id,
+        "attended": False,
+        "created_at": _now(),
+    })
+    wb = await db.webinars.find_one({"id": payload.webinar_id}, {"_id": 0})
+    if wb:
+        await db.webinars.update_one({"id": payload.webinar_id}, {"$inc": {"attendees": 1}})
+        await add_activity(user["user_id"], "webinar", f"Registered for {wb['title']}", 0)
+    return {"ok": True}
+
+
+# -------------------- Referrals --------------------
+@api.get("/referrals")
+async def get_referrals(user: CurrentUser):
+    referrals = await db.referrals.find({"referrer_id": user["user_id"]}, {"_id": 0}).to_list(100)
+    verified = [r for r in referrals if r.get("verified")]
+    kyc_done = [r for r in referrals if r.get("kyc_completed")]
+    backend = os.environ.get("PUBLIC_APP_URL", "")
+    link_base = backend if backend else ""
+    return {
+        "referral_code": user["referral_code"],
+        "referral_link": f"{link_base}/?ref={user['referral_code']}" if link_base else f"https://onex.club/?ref={user['referral_code']}",
+        "stats": {
+            "invites_sent": len(referrals),
+            "verified": len(verified),
+            "kyc_completed": len(kyc_done),
+            "aed_earned": len(verified) * 50 + len(kyc_done) * 100,
+        },
+        "missions": [
+            {"id": "invite", "title": "Invite a Friend", "subtitle": "Share your link with one friend.", "aed": 50, "completed": len(referrals) >= 1},
+            {"id": "verify_mobile", "title": "Friend Verifies Mobile", "subtitle": "They confirm their number.", "aed": 25, "completed": len(verified) >= 1},
+            {"id": "complete_kyc", "title": "Friend Completes KYC", "subtitle": "They verify identity.", "aed": 100, "completed": len(kyc_done) >= 1},
+            {"id": "attend_webinar", "title": "Friend Attends Webinar", "subtitle": "They join a OneX webinar.", "aed": 50, "completed": False},
+        ],
+        "referrals": referrals,
+    }
+
+
+class ShareLog(BaseModel):
+    channel: str
+
+
+@api.post("/referrals/share")
+async def log_share(payload: ShareLog, user: CurrentUser):
+    await db.referral_shares.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "channel": payload.channel,
+        "created_at": _now(),
+    })
+    return {"ok": True}
+
+
+# -------------------- Leaderboard --------------------
+async def _user_rank(user_id: str) -> dict:
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        return {"rank": 0, "balance": 0}
+    seed = await db.leaderboard_seed.find({}, {"_id": 0}).to_list(100)
+    others = await db.users.find({"user_id": {"$ne": user_id}}, {"_id": 0}).to_list(100)
+    pool = []
+    for s in seed:
+        pool.append({"name": s["name"], "avatar": s["avatar"], "balance": s["balance"], "referrals": s["referrals"], "tier": s["tier"], "is_user": False})
+    for o in others:
+        pool.append({"name": o["name"], "avatar": o.get("picture"), "balance": o["aed_balance"], "referrals": 0, "tier": o.get("tier", "Cadet"), "is_user": False})
+    pool.append({"name": user["name"], "avatar": user.get("picture"), "balance": user["aed_balance"], "referrals": 0, "tier": user.get("tier", "Cadet"), "is_user": True})
+    pool.sort(key=lambda x: x["balance"], reverse=True)
+    rank = next((i + 1 for i, x in enumerate(pool) if x["is_user"]), len(pool))
+    return {"rank": rank, "balance": user["aed_balance"], "total": len(pool)}
+
+
+@api.get("/leaderboard")
+async def get_leaderboard(user: CurrentUser, period: str = "weekly"):
+    # Build pool combining seed leaderboard + actual users + current user
+    seed = await db.leaderboard_seed.find({}, {"_id": 0}).to_list(100)
+    others = await db.users.find({"user_id": {"$ne": user["user_id"]}}, {"_id": 0}).to_list(100)
+    pool = []
+    for s in seed:
+        pool.append({"name": s["name"], "avatar": s["avatar"], "balance": s["balance"], "referrals": s["referrals"], "tier": s["tier"], "is_user": False})
+    for o in others:
+        pool.append({"name": o["name"], "avatar": o.get("picture"), "balance": o["aed_balance"], "referrals": 0, "tier": o.get("tier", "Cadet"), "is_user": False})
+    pool.append({"name": user["name"], "avatar": user.get("picture"), "balance": user["aed_balance"], "referrals": 0, "tier": user.get("tier", "Cadet"), "is_user": True})
+    # Period multiplier just to differentiate values (cosmetic)
+    multiplier = {"weekly": 0.18, "monthly": 0.55, "all_time": 1.0}.get(period, 1.0)
+    pool_period = [
+        {**p, "balance": int(p["balance"] * multiplier) if not p["is_user"] else p["balance"]}
+        for p in pool
+    ]
+    pool_period.sort(key=lambda x: x["balance"], reverse=True)
+    for i, p in enumerate(pool_period):
+        p["rank"] = i + 1
+    me = next(p for p in pool_period if p["is_user"])
+    return {"period": period, "podium": pool_period[:3], "list": pool_period[:30], "me": me}
+
+
+# -------------------- Community updates --------------------
+@api.get("/community-updates")
+async def list_updates(user: CurrentUser):
+    updates = await db.community_updates.find({}, {"_id": 0}).sort("published_at", -1).to_list(50)
+    liked = await db.user_likes.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(50)
+    saved = await db.user_saves.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(50)
+    liked_ids = {lk["update_id"] for lk in liked}
+    saved_ids = {s["update_id"] for s in saved}
+    for u in updates:
+        u["liked"] = u["id"] in liked_ids
+        u["saved"] = u["id"] in saved_ids
+    return {"updates": updates}
+
+
+class UpdateAction(BaseModel):
+    update_id: str
+
+
+@api.post("/community-updates/like")
+async def like_update(payload: UpdateAction, user: CurrentUser):
+    existing = await db.user_likes.find_one({"user_id": user["user_id"], "update_id": payload.update_id})
+    if existing:
+        await db.user_likes.delete_one({"user_id": user["user_id"], "update_id": payload.update_id})
+        await db.community_updates.update_one({"id": payload.update_id}, {"$inc": {"likes": -1}})
+        return {"liked": False}
+    await db.user_likes.insert_one({"user_id": user["user_id"], "update_id": payload.update_id, "created_at": _now()})
+    await db.community_updates.update_one({"id": payload.update_id}, {"$inc": {"likes": 1}})
+    return {"liked": True}
+
+
+@api.post("/community-updates/save")
+async def save_update(payload: UpdateAction, user: CurrentUser):
+    existing = await db.user_saves.find_one({"user_id": user["user_id"], "update_id": payload.update_id})
+    if existing:
+        await db.user_saves.delete_one({"user_id": user["user_id"], "update_id": payload.update_id})
+        return {"saved": False}
+    await db.user_saves.insert_one({"user_id": user["user_id"], "update_id": payload.update_id, "created_at": _now()})
+    return {"saved": True}
+
+
+# -------------------- Co-owner benefits --------------------
+@api.get("/co-owner-benefits")
+async def co_owner_benefits(user: CurrentUser):
+    items = await db.co_owner_benefits.find({}, {"_id": 0}).to_list(50)
+    for it in items:
+        it["unlocked"] = user["aed_balance"] >= it["unlock_threshold"]
+    return {"benefits": items, "current_balance": user["aed_balance"]}
+
+
+# -------------------- Support --------------------
+@api.get("/support")
+async def get_support(user: CurrentUser):
+    faqs = await db.faqs.find({}, {"_id": 0}).to_list(50)
+    return {
+        "faqs": faqs,
+        "specialist": {
+            "name": "Layla Hassan",
+            "role": "Your OneX Concierge",
+            "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85",
+            "status": "Online",
+        },
+        "tier": user.get("tier", "Cadet"),
+    }
+
+
+class SupportMessage(BaseModel):
+    message: str
+    channel: str = "chat"
+
+
+@api.post("/support/contact")
+async def support_contact(payload: SupportMessage, user: CurrentUser):
+    await db.support_messages.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "channel": payload.channel,
+        "message": payload.message,
+        "created_at": _now(),
+    })
+    return {"ok": True, "message": "Our concierge will reach out within 1 hour."}
+
+
+# -------------------- Settings --------------------
+DEFAULT_SETTINGS = {
+    "notifications": {"email": True, "push": True, "sms": False, "weekly_digest": True},
+    "preferences": {"language": "English", "currency": "AED", "timezone": "Asia/Dubai"},
+    "security": {"two_factor": False, "login_alerts": True},
+    "privacy": {"public_profile": False, "show_on_leaderboard": True},
+}
+
+
+@api.get("/settings")
+async def get_settings(user: CurrentUser):
+    doc = await db.user_settings.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    settings = doc["settings"] if doc else DEFAULT_SETTINGS
+    return {"user": user, "settings": settings}
+
+
+class SettingsUpdate(BaseModel):
+    settings: dict
+    name: Optional[str] = None
+
+
+@api.put("/settings")
+async def update_settings(payload: SettingsUpdate, user: CurrentUser):
+    await db.user_settings.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"settings": payload.settings, "updated_at": _now()}},
+        upsert=True,
+    )
+    if payload.name:
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"name": payload.name}})
+    return {"ok": True}
+
+
+# -------------------- Wire app --------------------
+app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
+async def _shutdown():
     client.close()
