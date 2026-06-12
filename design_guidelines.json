@@ -1,0 +1,116 @@
+{
+  "project_name": "OneX Club™",
+  "domain": "Dubai Real Estate Co-Ownership",
+  "theme": "dark",
+  "archetype": "5 (Luxury) mixed with 4 (Swiss & High-Contrast)",
+  "vibe": "Apple Wallet, Airbnb, Wealthfront, Linear - Premium Members Club",
+  "global_rules": {
+    "no_emojis": true,
+    "icons": "lucide-react",
+    "components_extension": ".js",
+    "testing_attributes": "All interactive elements must include data-testid (e.g., data-testid='sidebar-dashboard-link')."
+  },
+  "typography": {
+    "font_family": "Google Sans Flex, system-ui, -apple-system, sans-serif",
+    "headings": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl font-medium tracking-tight",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-medium tracking-tight",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "h4": "text-lg sm:text-xl font-medium"
+    },
+    "body": "text-base leading-relaxed text-zinc-400",
+    "labels": "text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500",
+    "instructions": "Ensure Google Sans Flex is imported. Avoid Inter for headings. Use negative letter-spacing for large text."
+  },
+  "colors": {
+    "background": "#0A0A0B",
+    "surface": "#15161A",
+    "surface_hover": "#1E1F24",
+    "surface_active": "#2A200B",
+    "primary": "#FACC15",
+    "primary_hover": "#EAB308",
+    "primary_glow": "rgba(250, 204, 21, 0.15)",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#A1A1AA",
+    "text_tertiary": "#71717A",
+    "border": "#27272A",
+    "border_light": "rgba(255,255,255,0.05)",
+    "success": "#22C55E",
+    "error": "#EF4444"
+  },
+  "spacing_and_radii": {
+    "container_padding": "p-6 md:p-8 lg:p-12",
+    "card_padding": "p-6 sm:p-8",
+    "gap": "gap-6 md:gap-8",
+    "radius_small": "rounded-lg",
+    "radius_medium": "rounded-2xl",
+    "radius_large": "rounded-[24px]",
+    "radius_full": "rounded-full"
+  },
+  "shadows": {
+    "card": "shadow-[0_8px_32px_rgba(0,0,0,0.4)]",
+    "glow": "shadow-[0_0_24px_rgba(250,204,21,0.15)]",
+    "surface_inner": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05)"
+  },
+  "components": {
+    "sidebar": {
+      "layout": "Fixed left sidebar, 280px width, flex column, custom scrollbar.",
+      "groups": ["My Journey", "Discover", "Community", "Account"],
+      "item_active_state": "bg-[#2A200B] text-[#FACC15] font-medium rounded-xl",
+      "item_inactive_state": "text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors",
+      "bottom_section": "Pill-shaped AED Balance card (bg-[#15161A] border-[#27272A]) + Profile card (Avatar + Name + Tier)."
+    },
+    "cards": {
+      "style": "bg-[#15161A] border border-[#27272A] rounded-[24px] overflow-hidden relative",
+      "hover_effect": "hover:-translate-y-1 hover:border-[#FACC15]/30 transition-all duration-300"
+    },
+    "buttons": {
+      "primary": "bg-[#FACC15] text-black font-semibold rounded-full px-6 py-3 hover:bg-[#EAB308] hover:shadow-[0_0_20px_rgba(250,204,21,0.3)] transition-all",
+      "secondary": "bg-[#15161A] text-white border border-[#27272A] font-semibold rounded-full px-6 py-3 hover:bg-[#1E1F24] hover:border-zinc-600 transition-all",
+      "glass": "backdrop-blur-md bg-black/40 border border-white/10 text-white rounded-full px-6 py-3 hover:bg-black/60 transition-all"
+    },
+    "progress_rings": {
+      "style": "SVG-based circular progress indicators. Track stroke: #27272A. Progress stroke: #FACC15. Stroke width: 6-8px. Rounded caps."
+    },
+    "badges": {
+      "coming_soon": "bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider"
+    }
+  },
+  "pages": {
+    "Dashboard": "Welcome text (lucide-react Hand icon instead of emoji). Milestone card with gold accent. Tier progress ring. Quick action buttons. Recent activity list.",
+    "My_Progress": "Large central circular progress ring. Timeline of milestones below it. High use of negative space.",
+    "Benefits_Ladder": "Horizontal or grid bento progression: Co-Owner Member -> Priority Co-Owner -> Co-Owner Circle -> Elite Co-Owner. Visual locks for unachieved tiers.",
+    "Dubai_Properties": "Airbnb-style grid of large property cards. Hero images, 'Coming Soon' badges, investment filters, 'Join Waitlist' primary CTAs.",
+    "Allocation_Interests": "Large selectable category cards with checkmark indicators when active. Summary side-panel or sticky bottom bar.",
+    "Webinar_Events": "Featured event hero card. Tabs for Upcoming/Registered/Recorded. Curated list format.",
+    "Invite_and_Earn": "Referral link copy component, share buttons, list of referral missions/achievements.",
+    "Leaderboard": "Podium visualization for top 3 (gold/silver/bronze accents). Weekly/Monthly/All-time tabs. List view for rest of users.",
+    "Community_Updates": "Curated feed. Post cards with like/save/share actions. High-quality imagery attached.",
+    "Co_Owner_Benefits": "Immersive aspirational cards (airport transfers, private events). Focus on imagery and luxury typography.",
+    "Support_Center": "3 primary action cards at top (Chat, Email, Call). Accordion-style FAQs below.",
+    "Settings": "Clean list of toggles, profile edit inputs, security settings, notification preferences."
+  },
+  "media": {
+    "image_urls": {
+      "hero_skyline": [
+        "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85",
+        "https://images.pexels.com/photos/17238022/pexels-photo-17238022.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      ],
+      "properties": [
+        "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85",
+        "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      ],
+      "benefits_lifestyle": [
+        "https://images.pexels.com/photos/5778470/pexels-photo-5778470.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "https://images.unsplash.com/photo-1661354421565-74ffd9650918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzgxMzAxOTAxfDA&ixlib=rb-4.1.0&q=85"
+      ],
+      "avatars": [
+        "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85"
+      ]
+    }
+  }
+}
