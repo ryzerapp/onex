@@ -65,6 +65,7 @@ const TopUpModal = ({ open, onClose }) => {
         <div className="flex items-center gap-2 text-[#FACC15]">
           <Sparkles size={16} />
           <span className="text-[12px] uppercase tracking-[0.18em] font-medium">Top up AED Balance</span>
+          <span className="onex-pill bg-[#A78BFA]/15 text-[#A78BFA] !text-[10px]" data-testid="topup-dummy-badge">Test Mode · No card needed</span>
         </div>
         <h2 className="text-3xl font-display tracking-tight text-white mt-3 leading-tight">
           Unlock the next tier — today.
@@ -101,8 +102,8 @@ const TopUpModal = ({ open, onClose }) => {
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-4 text-[12px] text-zinc-500">
-          <span>Secured by Stripe · Test mode</span>
-          <span>Card details never touch our servers.</span>
+          <span>Test mode active · No real charge</span>
+          <span>Production-ready Stripe handler behind a flag.</span>
         </div>
 
         <button
@@ -111,7 +112,7 @@ const TopUpModal = ({ open, onClose }) => {
           data-testid="topup-checkout-btn"
           className={`mt-5 w-full btn-gold !py-4 text-[15px] ${busy ? "opacity-70 cursor-wait" : ""}`}
         >
-          {busy ? (<><Loader2 size={16} className="animate-spin" /> Redirecting…</>) : (<>Continue to secure checkout <ArrowRight size={16} /></>)}
+          {busy ? (<><Loader2 size={16} className="animate-spin" /> Crediting AED…</>) : (<>Confirm test top-up <ArrowRight size={16} /></>)}
         </button>
       </div>
     </div>

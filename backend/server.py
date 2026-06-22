@@ -1019,6 +1019,36 @@ async def create_checkout(payload: CheckoutPayload, request: Request, user: Curr
     if not pkg:
         raise HTTPException(status_code=400, detail="Invalid package")
 
+    dummy_mode = os.environ.get("STRIPE_DUMMY_MODE", "false").lower() in ("true", "1", "yes")
+    origin = payload.origin_url.rstrip("/")
+
+    if dummy_mode:
+        # Short-circuit Stripe entirely — write a synthetic "paid" tx, redirect back to success URL.
+        session_id = f"dummy_{uuid.uuid4().hex}"
+        await db.payment_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["user_id"],
+            "session_id": session_id,
+            "package_id": pkg["id"],
+            "amount_usd": pkg["usd"],
+            "aed_amount": pkg["aed"],
+            "currency": "usd",
+            "status": "complete",
+            "payment_status": "paid",
+            "credited": False,
+            "dummy": True,
+            "metadata": {
+                "user_id": user["user_id"],
+                "package_id": pkg["id"],
+                "aed_amount": str(pkg["aed"]),
+                "source": "aed_topup_dummy",
+            },
+            "created_at": _now(),
+            "updated_at": _now(),
+        })
+        success_url = f"{origin}/benefits-ladder?session_id={session_id}&topup=success&dummy=1"
+        return {"url": success_url, "session_id": session_id, "package": pkg, "dummy": True}
+
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Stripe is not configured")
@@ -1027,7 +1057,6 @@ async def create_checkout(payload: CheckoutPayload, request: Request, user: Curr
     webhook_url = f"{host_url}api/webhook/stripe"
     stripe = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
 
-    origin = payload.origin_url.rstrip("/")
     success_url = f"{origin}/benefits-ladder?session_id={{CHECKOUT_SESSION_ID}}&topup=success"
     cancel_url = f"{origin}/benefits-ladder?topup=cancel"
 
@@ -1109,6 +1138,22 @@ async def checkout_status(session_id: str, request: Request, user: CurrentUser):
     if not tx or tx["user_id"] != user["user_id"]:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+
+    # Dummy mode short-circuit — synthetic sessions are already marked paid on create.
+    if tx.get("dummy") or session_id.startswith("dummy_"):
+        await _credit_payment(tx, origin=origin)
+        fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+        return {
+            "status": "complete",
+            "payment_status": "paid",
+            "package_id": tx.get("package_id"),
+            "aed_credited": int(tx["aed_amount"]),
+            "aed_balance": fresh_user["aed_balance"],
+            "tier": fresh_user["tier"],
+            "dummy": True,
+        }
+
     api_key = os.environ.get("STRIPE_API_KEY")
     host_url = str(request.base_url)
     stripe = StripeCheckout(api_key=api_key, webhook_url=f"{host_url}api/webhook/stripe")
@@ -1127,7 +1172,6 @@ async def checkout_status(session_id: str, request: Request, user: CurrentUser):
 
     if status.payment_status == "paid":
         tx = await db.payment_transactions.find_one({"_id": tx["_id"]})
-        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
         await _credit_payment(tx, origin=origin)
 
     fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
