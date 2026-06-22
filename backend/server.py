@@ -16,6 +16,9 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Optional, Annotated
 
+import random
+import string
+
 import hashlib
 import hmac
 import httpx
@@ -67,6 +70,16 @@ class User(BaseModel):
 class SessionExchange(BaseModel):
     session_id: str
     ref: Optional[str] = None
+
+
+class EmailStart(BaseModel):
+    email: str
+    ref: Optional[str] = None
+
+
+class EmailVerify(BaseModel):
+    email: str
+    code: str
 
 
 # Jitsi/JaaS (8x8.vc) room URL generator.
@@ -444,6 +457,130 @@ async def auth_logout(response: Response, session_token: Optional[str] = Cookie(
     return {"ok": True}
 
 
+# -------------------- Email magic-link sign-in --------------------
+def _gen_otp(n: int = 6) -> str:
+    return "".join(random.choices(string.digits, k=n))
+
+
+async def _attribute_referral_signup(user: dict, ref_code: Optional[str], origin: str, background: BackgroundTasks):
+    code = (ref_code or "").strip().lower() or None
+    if not code:
+        return
+    referrer = await db.users.find_one({"referral_code": code})
+    if not referrer or referrer["user_id"] == user["user_id"]:
+        return
+    if await db.referrals.find_one({"referee_id": user["user_id"]}):
+        return
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"referred_by": referrer["user_id"]}})
+    await db.referrals.insert_one({
+        "id": str(uuid.uuid4()),
+        "referrer_id": referrer["user_id"],
+        "referee_id": user["user_id"],
+        "referee_email": user["email"],
+        "verified": True,
+        "kyc_completed": False,
+        "created_at": _now(),
+    })
+    await grant_aed(referrer["user_id"], 50)
+    await add_activity(referrer["user_id"], "referral", f"Referred {user['name']}", 50)
+    background.add_task(
+        send_milestone_done, referrer["email"], referrer["name"],
+        f"Friend joined · {user['name']}", 50, referrer["aed_balance"] + 50, origin,
+    )
+
+
+@api.post("/auth/email/start")
+async def auth_email_start(payload: EmailStart, request: Request, background: BackgroundTasks):
+    email = payload.email.strip().lower()
+    if "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Enter a valid email")
+    code = _gen_otp()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    await db.email_otps.update_one(
+        {"email": email},
+        {"$set": {
+            "email": email, "code": code, "ref": (payload.ref or "").strip().lower() or None,
+            "expires_at": expires_at, "created_at": _now(), "attempts": 0,
+        }},
+        upsert=True,
+    )
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    # Best-effort send through the existing helper signature: reuse send_milestone_done's chassis.
+    from email_service import _send, _shell  # type: ignore  # internal re-use
+    body = f"""
+    <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#0A0A0B;border:1px solid #27272A;border-radius:16px;'>
+      <tr><td style='padding:24px;text-align:center;'>
+        <div style='color:#FACC15;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;'>Your sign-in code</div>
+        <div style='color:#FFFFFF;font-size:40px;font-weight:600;padding:12px 0;letter-spacing:0.3em;font-family:monospace;'>{code}</div>
+        <div style='color:#A1A1AA;font-size:13px;'>Expires in 15 minutes.</div>
+      </td></tr>
+    </table>
+    """
+    html = _shell(
+        title="Sign in to OneX Club",
+        intro="Enter this code in the OneX Club sign-in screen. If you didn't request this, ignore the email.",
+        body_html=body,
+        cta_label="Open OneX Club",
+        cta_url=origin,
+    )
+    background.add_task(_send, email, "Your OneX Club sign-in code", html)
+    return {"ok": True}
+
+
+@api.post("/auth/email/verify")
+async def auth_email_verify(payload: EmailVerify, request: Request, response: Response, background: BackgroundTasks):
+    email = payload.email.strip().lower()
+    rec = await db.email_otps.find_one({"email": email})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Request a new code")
+    expires_at = rec["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Code expired — request a new one")
+    if rec.get("attempts", 0) >= 5:
+        raise HTTPException(status_code=429, detail="Too many attempts — request a new code")
+    if payload.code.strip() != rec["code"]:
+        await db.email_otps.update_one({"email": email}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=400, detail="Invalid code")
+
+    await db.email_otps.delete_one({"email": email})
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    is_new_user = user is None
+    if is_new_user:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        name = email.split("@")[0].replace(".", " ").title()
+        user_doc = {
+            "user_id": user_id, "email": email, "name": name, "picture": None,
+            "tier": "Cadet", "aed_balance": 100, "referral_code": _make_referral_code(name),
+            "referred_by": None, "created_at": _now(),
+        }
+        await db.users.insert_one(user_doc)
+        await ensure_user_milestones(user_id)
+        await add_activity(user_id, "join", "Joined the OneX waitlist", reward=100)
+        user = user_doc
+
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    if is_new_user:
+        await _attribute_referral_signup(user, rec.get("ref"), origin, background)
+        background.add_task(send_welcome, user["email"], user["name"], origin)
+
+    session_token = f"email_{uuid.uuid4().hex}"
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.user_sessions.insert_one({
+        "user_id": user["user_id"], "session_token": session_token,
+        "expires_at": expires_at, "created_at": datetime.now(timezone.utc),
+    })
+    response.set_cookie(
+        key="session_token", value=session_token,
+        max_age=7 * 24 * 60 * 60, httponly=True, secure=True, samesite="none", path="/",
+    )
+    return {"user": user}
+
+
 # -------------------- Dashboard / progress --------------------
 @api.get("/dashboard")
 async def dashboard(user: CurrentUser):
@@ -798,6 +935,7 @@ async def list_webinars(user: CurrentUser, tab: Optional[str] = "upcoming"):
 
 class WebinarAction(BaseModel):
     webinar_id: str
+    ref: Optional[str] = None
 
 
 @api.post("/webinars/register")
@@ -822,16 +960,33 @@ async def register_webinar(payload: WebinarAction, request: Request, background:
     await db.webinars.update_one({"id": payload.webinar_id}, {"$inc": {"attendees": 1}})
     await add_activity(user["user_id"], "webinar", f"Registered for {wb['title']}", 0)
 
-    # Confirmation email with the live Jitsi join URL.
+    # Webinar-invite referral: if `ref` is set and this user wasn't already attributed, credit referrer +AED 50.
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    ref_code = (payload.ref or "").strip().lower() or None
+    if ref_code and not user.get("referred_by"):
+        referrer = await db.users.find_one({"referral_code": ref_code})
+        if referrer and referrer["user_id"] != user["user_id"]:
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"referred_by": referrer["user_id"]}})
+            await db.referrals.insert_one({
+                "id": str(uuid.uuid4()),
+                "referrer_id": referrer["user_id"],
+                "referee_id": user["user_id"],
+                "referee_email": user["email"],
+                "verified": True,
+                "kyc_completed": False,
+                "via": "webinar",
+                "created_at": _now(),
+            })
+            await grant_aed(referrer["user_id"], 50)
+            await add_activity(referrer["user_id"], "referral", f"Webinar invite · {user['name']}", 50)
+            background.add_task(
+                send_milestone_done, referrer["email"], referrer["name"],
+                f"Friend joined a webinar · {user['name']}", 50, referrer["aed_balance"] + 50, origin,
+            )
+
     background.add_task(
-        send_milestone_done,
-        user["email"],
-        user["name"],
-        f"Registered · {wb['title']}",
-        0,
-        user["aed_balance"],
-        f"{origin}/webinars",
+        send_milestone_done, user["email"], user["name"],
+        f"Registered · {wb['title']}", 0, user["aed_balance"], f"{origin}/webinars",
     )
     return {"ok": True, "join_url": room_url}
 

@@ -33,7 +33,16 @@ const WebinarEvents = () => {
   useEffect(() => { load(tab); }, [tab, load]);
 
   const register = async (w) => {
-    try { await api.post("/webinars/register", { webinar_id: w.id }); toast.success(`Registered for ${w.title}`); load(); }
+    try {
+      let ref = null;
+      try {
+        const q = new URLSearchParams(window.location.search);
+        ref = q.get("ref") || sessionStorage.getItem("onex_ref");
+      } catch (e) { /* noop */ }
+      await api.post("/webinars/register", { webinar_id: w.id, ref });
+      toast.success(`Registered for ${w.title}`);
+      load();
+    }
     catch { toast.error("Could not register"); }
   };
 
