@@ -80,12 +80,16 @@ async def _send(to: str, subject: str, html: str, name: Optional[str] = None,
 
 
 # -------------------- Template helpers --------------------
-async def send_waitlist_welcome(to: str, name: str, referrer_name: Optional[str], app_url: str) -> Optional[str]:
+async def send_waitlist_welcome(to: str, name: str, referrer_name: Optional[str], app_url: str,
+                                ref_code: Optional[str] = None) -> Optional[str]:
     """Inbox-friendly welcome for visitors who just dropped their email on the Framer landing.
 
     Subject deliberately omits any "+AED N" prefix — these visitors aren't full members yet
     and the inbox preview must read like a clean welcome, not a transactional receipt.
+    The CTA deep-links into the OneX login page with their email pre-filled so they can pick
+    either Email-OTP or Google sign-in in one tap (no re-verification step).
     """
+    from urllib.parse import urlencode
     first = name.split(" ")[0] if name else "there"
     invited_line = (
         f"<span style='color:{_TEXT};'>{referrer_name}</span> invited you to join "
@@ -97,12 +101,14 @@ async def send_waitlist_welcome(to: str, name: str, referrer_name: Optional[str]
         <div style="color:{_BRAND_GOLD};font-size:11px;letter-spacing:0.18em;text-transform:uppercase;">Waitlist confirmed</div>
         <div style="color:{_TEXT};font-size:20px;font-weight:600;padding-top:10px;line-height:1.25;">You're on the OneX Club waitlist, {first}.</div>
         <div style="color:{_DIM};font-size:13px;padding-top:10px;line-height:1.7;">
-          {invited_line}Dubai's invitation-only co-ownership circle. We'll email you the moment your
-          allocation window opens — typically within 7 days of joining.
+          {invited_line}Dubai's invitation-only co-ownership circle. Tap the button below to claim your
+          member dashboard — sign in with Google or with a one-time email code (your email is already pre-filled).
         </div>
       </td></tr>
     </table>
     """
+    qs = urlencode({k: v for k, v in {"email": to, "ref": ref_code, "src": "waitlist"}.items() if v})
+    cta = f"{app_url.rstrip('/')}/login?{qs}"
     return await _send(
         to=to,
         subject="You're on the OneX Club waitlist",
@@ -110,8 +116,8 @@ async def send_waitlist_welcome(to: str, name: str, referrer_name: Optional[str]
             title=f"Welcome, {first}.",
             intro="Priority access to Dubai's most exclusive properties just started. Five flagship launches. Curated by OneX. Reserved for members.",
             body_html=body,
-            cta_label="Explore OneX Club",
-            cta_url=app_url,
+            cta_label="Claim your member dashboard",
+            cta_url=cta,
         ),
         name=name,
     )

@@ -554,7 +554,7 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
                 await add_activity(referrer["user_id"], "referral", f"Referred {user['name']}", 50)
                 await _mark_click_converted(ref_code, request)
                 # Best-effort email to the referrer.
-                origin_url = request.headers.get("origin") or str(request.base_url).rstrip("/")
+                origin_url = _app_url(request)
                 background.add_task(
                     send_milestone_done,
                     referrer["email"],
@@ -564,7 +564,7 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
                     referrer["aed_balance"] + 50,
                     origin_url,
                 )
-        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        origin = _app_url(request)
         background.add_task(send_welcome, user["email"], user["name"], origin)
         # CRM: sync new Google signup into Brevo list.
         background.add_task(
@@ -666,7 +666,7 @@ async def auth_email_start(payload: EmailStart, request: Request, background: Ba
         }},
         upsert=True,
     )
-    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    origin = _app_url(request)
     # Best-effort send through the existing helper signature: reuse send_milestone_done's chassis.
     from email_service import _send, _shell  # type: ignore  # internal re-use
     body = f"""
@@ -726,7 +726,7 @@ async def auth_email_verify(payload: EmailVerify, request: Request, response: Re
         user_doc.pop("_id", None)
         user = user_doc
 
-    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    origin = _app_url(request)
     if is_new_user:
         await _attribute_referral_signup(user, rec.get("ref"), origin, background, request)
         background.add_task(send_welcome, user["email"], user["name"], origin)
@@ -891,7 +891,7 @@ async def complete_milestone(payload: MilestoneAction, request: Request, backgro
             granted,
         )
         fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
-        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        origin = _app_url(request)
         background.add_task(
             send_milestone_done,
             user["email"],
@@ -1176,7 +1176,7 @@ async def register_webinar(payload: WebinarAction, request: Request, background:
     await add_activity(user["user_id"], "webinar", f"Registered for {wb['title']}", 0)
 
     # Webinar-invite referral: if `ref` is set and this user wasn't already attributed, credit referrer +AED 50.
-    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    origin = _app_url(request)
     ref_code = (payload.ref or "").strip().lower() or None
     if ref_code and not user.get("referred_by"):
         referrer = await db.users.find_one({"referral_code": ref_code})
@@ -1222,7 +1222,7 @@ async def remind_webinar(payload: WebinarAction, request: Request, background: B
         {"$set": {"updated_at": _now()}, "$setOnInsert": {"created_at": _now()}},
         upsert=True,
     )
-    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    origin = _app_url(request)
     try:
         when_str = datetime.fromisoformat(wb["date"].replace("Z", "+00:00")).strftime("%a, %d %b %Y · %H:%M UTC")
     except Exception:  # noqa: BLE001
@@ -1294,7 +1294,7 @@ async def waitlist_join(payload: WaitlistJoin, request: Request, background: Bac
         await add_activity(referrer["user_id"], "referral", f"Waitlist signup · {name}", 25)
         await _mark_click_converted(ref_code, request)
 
-    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    origin = _app_url(request)
     # CRM: push the waitlist email into the Brevo list (highest-value action — runs first).
     background.add_task(
         brevo_upsert_contact,
@@ -1309,6 +1309,7 @@ async def waitlist_join(payload: WaitlistJoin, request: Request, background: Bac
         email, name,
         referrer["name"] if referrer else None,
         origin,
+        ref_code if referrer else None,
     )
     # Admin notification — reuse the support-inbound helper for a consistent format.
     background.add_task(
@@ -1353,7 +1354,25 @@ REFERRAL_TTL_DAYS = 30  # a click is "active" for 30 days, then "expired" if no 
 
 
 def _public_app_url() -> str:
-    return os.environ.get("PUBLIC_APP_URL", "https://onex.finance").rstrip("/")
+    return os.environ.get("PUBLIC_APP_URL", "https://www.onexassets.com").rstrip("/")
+
+
+def _app_url(request: Optional[Request] = None) -> str:
+    """Resolve the OneX *app* URL for email CTAs (login, dashboard, etc.).
+
+    Always prefer the env-configured ONEX_APP_URL — never trust `request.base_url`,
+    which inside Kubernetes resolves to the internal cluster hostname and yields a
+    403 when shared in emails (which is exactly the bug we fixed here).
+    """
+    env_url = os.environ.get("ONEX_APP_URL", "").rstrip("/")
+    if env_url:
+        return env_url
+    # Last-resort: try the browser-set Origin header, but never the internal cluster host.
+    if request is not None:
+        origin = request.headers.get("origin")
+        if origin and "cluster" not in origin and "emergentcf.cloud" not in origin:
+            return origin.rstrip("/")
+    return _public_app_url()
 
 
 def _email_partial(email: str) -> str:
@@ -1675,7 +1694,7 @@ async def support_contact(payload: SupportMessage, request: Request, background:
         "created_at": _now(),
     })
     # Forward immediately to the concierge inbox (best-effort, non-blocking).
-    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    origin = _app_url(request)
     background.add_task(send_support_inbound, dict(user), payload.message, payload.channel, origin)
     return {"ok": True, "message": "Our concierge will reach out within 1 hour."}
 
@@ -1887,7 +1906,7 @@ async def checkout_status(session_id: str, request: Request, user: CurrentUser):
     if not tx or tx["user_id"] != user["user_id"]:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    origin = _app_url(request)
 
     # Dummy mode short-circuit — synthetic sessions are already marked paid on create.
     if tx.get("dummy") or session_id.startswith("dummy_"):
@@ -1948,7 +1967,7 @@ async def kyc_start(request: Request, user: CurrentUser):
     api_key = os.environ.get("VERIFF_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Veriff not configured")
-    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    origin = _app_url(request)
     import json as _json
     body = {
         "verification": {
@@ -2041,7 +2060,7 @@ async def stripe_webhook(request: Request):
                 {"$set": {"status": "complete", "payment_status": "paid", "updated_at": _now()}},
             )
             tx = await db.payment_transactions.find_one({"_id": tx["_id"]})
-            origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+            origin = _app_url(request)
             await _credit_payment(tx, origin=origin)
     return {"ok": True}
 

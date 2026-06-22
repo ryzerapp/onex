@@ -16,8 +16,16 @@ const Login = () => {
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
-    const refCode = new URLSearchParams(window.location.search).get("ref");
-    if (refCode) { try { sessionStorage.setItem("onex_ref", refCode); } catch (e) {} }
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get("ref");
+    if (refCode) { try { sessionStorage.setItem("onex_ref", refCode); } catch (e) { /* ignore */ } }
+    // Email pre-filled from the waitlist welcome email's CTA — skip the "choose method" step
+    // and land the visitor directly in the email-OTP entry box (or they can hit Back for Google).
+    const prefillEmail = params.get("email");
+    if (prefillEmail && prefillEmail.includes("@")) {
+      setEmail(prefillEmail);
+      setMode("email-input");
+    }
   }, []);
 
   React.useEffect(() => { if (user) navigate("/dashboard", { replace: true }); }, [user, navigate]);
