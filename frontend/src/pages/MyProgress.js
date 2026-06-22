@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/api";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import ProgressRing from "@/components/common/ProgressRing";
 import PhoneCaptureModal from "@/components/progress/PhoneCaptureModal";
 import {
@@ -99,6 +100,7 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
 
 const MyProgress = () => {
   const navigate = useNavigate();
+  const { refresh } = useAuth();
   const [data, setData] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
@@ -109,7 +111,8 @@ const MyProgress = () => {
   const finishMilestone = async (id, extras = {}) => {
     const { data: r } = await api.post("/progress/complete", { milestone_id: id, ...extras });
     toast.success(r.granted ? `+AED ${r.granted} added to your balance` : "Step marked complete");
-    load();
+    await load();
+    refresh(); // refresh sidebar balance/tier
   };
 
   const complete = async (id) => {

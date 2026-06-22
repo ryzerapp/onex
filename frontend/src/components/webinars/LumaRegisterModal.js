@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { X, Mail, ExternalLink, Calendar, Clock, Users, Sparkles, Check } from "lucide-react";
 
 /**
@@ -9,6 +9,12 @@ import { X, Mail, ExternalLink, Calendar, Clock, Users, Sparkles, Check } from "
  */
 const LumaRegisterModal = ({ open, webinar, userEmail, onConfirm, onClose }) => {
   const [showIframe, setShowIframe] = useState(false);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose && onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
   if (!open || !webinar) return null;
 
   const lumaUrl = webinar.luma_url || "https://luma.com/dveb7fpt";

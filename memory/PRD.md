@@ -25,7 +25,7 @@ currency surface. Personalization based on user stage at all times.
 - Data seeded at startup: properties (5), categories (5), webinars (5), updates (4), leaderboard (8), co-owner benefits (7), FAQs (5).
 
 ## What's implemented (2026-02)
-- Google Auth flow (login, callback, /auth/me, logout, cookie + Bearer)
+- Google Auth flow (login, callback, /auth/me, logout, cookie + Bearer) + Email OTP magic link
 - Sidebar (4 groups, AED balance, profile card)
 - All 12 pages with full backend persistence:
   - Dashboard, My Progress, Benefits Ladder, Dubai Properties, Allocation Interests,
@@ -34,18 +34,30 @@ currency surface. Personalization based on user stage at all times.
 - Mutations: complete milestone (+AED), property waitlist, property save, save interests,
   webinar register, referral share, like/save updates, support contact, settings update.
 - Tier auto-recompute on AED grant.
+- Resend email integration (Welcome, milestones, top-up receipts, OTP, webinar reminder, support inbound).
+- Veriff KYC integration; Stripe (DUMMY mode) for AED top-ups; real referral system with +50 AED rewards.
+
+## What's implemented (2026-02-22 update)
+- **Real leaderboard time-window aggregates**: weekly/monthly use sum(activity_log.reward) within window per user; seed users get deterministic period scaling. (`server.py /api/leaderboard`)
+- **Webinar Luma integration**: Jitsi replaced with Luma. Every webinar has `luma_url` (https://luma.com/dveb7fpt). LumaRegisterModal popup pre-fills user email and offers Confirm-on-Luma + View-Full iframe.
+- **Webinar reminder flow**: registered + not-live cards show "Registered · Remind Me"; clicking POSTs `/api/webinars/remind` and emails the user.
+- **Webinar Go-Live gate**: `is_live` computed server-side from `date` + `duration_minutes`; only true within the live window. Card+featured CTA only shows Go Live Now while is_live=true.
+- **Leaderboard UI redesign**: gold shimmer "OneX Champions" headline, glowing podium with crown/medal/award icons, "Your standing" hero card, ranked list with progress bars per row.
+- **Support contact → concierge email**: every `/api/support/contact` message is forwarded by `send_support_inbound` to `SUPPORT_INBOX` (defaults to surya@onex.exchange) with full user context (name, email, phone, tier, AED balance, message body, reply_to=user email).
+- **Phone capture on Verify Mobile**: milestone now requires a phone number via PhoneCaptureModal; persisted on `user.phone` and editable in Settings.
 
 ## Backlog (P1)
-- Persist Sora-2-style hero videos on Co-Owner Benefits.
+- Sora-2-style hero videos on Co-Owner Benefits.
 - Email verification capture for shared referral signups.
 - Saved Properties dedicated view.
-- Replace mock leaderboard period balances with real time-window aggregates.
+- Deep visual redesign of Co-Owner Benefits page (modal already wired).
 
 ## Backlog (P2)
-- Stripe integration for AED top-up.
+- Stripe LIVE (currently DUMMY); webhook + receipts wired.
 - Live chat with WebSocket on Support Center.
 - Push notifications via FCM/OneSignal.
+- Split server.py into routers (auth/dashboard/progress/webinars/properties/social/support/settings/payments).
 
 ## Next steps
-- Optionally enable Stripe payments for direct AED top-ups.
-- Add WhatsApp click-through actually opening wa.me share URLs (link copy already works).
+- Decide when to switch Stripe from DUMMY to LIVE.
+- Optionally polish: ESC accessibility everywhere, phonenumbers validation, refresh queue for support emails.

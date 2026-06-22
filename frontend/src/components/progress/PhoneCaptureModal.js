@@ -1,10 +1,16 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { X, Smartphone, Shield } from "lucide-react";
 
 /** Small modal that captures a phone number before completing the "Verify Mobile" milestone. */
 const PhoneCaptureModal = ({ open, onSubmit, onClose }) => {
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose && onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
   if (!open) return null;
 
   const submit = async () => {
