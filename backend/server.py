@@ -30,6 +30,7 @@ from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout,
 )
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
@@ -400,6 +401,7 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
         await db.users.insert_one(user_doc)
         await ensure_user_milestones(user_id)
         await add_activity(user_id, "join", "Joined the OneX waitlist", reward=100)
+        user_doc.pop("_id", None)
         user = user_doc
     else:
         if picture and not user.get("picture"):
@@ -438,6 +440,7 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
                 })
                 await grant_aed(referrer["user_id"], 50)
                 await add_activity(referrer["user_id"], "referral", f"Referred {user['name']}", 50)
+                await _mark_click_converted(ref_code, request)
                 # Best-effort email to the referrer.
                 origin_url = request.headers.get("origin") or str(request.base_url).rstrip("/")
                 background.add_task(
@@ -482,7 +485,25 @@ def _gen_otp(n: int = 6) -> str:
     return "".join(random.choices(string.digits, k=n))
 
 
-async def _attribute_referral_signup(user: dict, ref_code: Optional[str], origin: str, background: BackgroundTasks):
+async def _mark_click_converted(code: str, request: Request) -> None:
+    """When attribution happens, flip the matching click rows to converted=True so the
+    pending/expired buckets stay accurate on the referrer dashboard."""
+    code = (code or "").strip().lower()
+    if not code:
+        return
+    visitor = request.cookies.get("onex_visitor") if request else None
+    query = {"code": code, "converted": False}
+    if visitor:
+        query["visitor_id"] = visitor
+        await db.referral_clicks.update_many(query, {"$set": {"converted": True, "converted_at": _now()}})
+        return
+    # No cookie — fall back to the most recent unconverted click for that code.
+    last = await db.referral_clicks.find_one(query, sort=[("created_at", -1)])
+    if last:
+        await db.referral_clicks.update_one({"id": last["id"]}, {"$set": {"converted": True, "converted_at": _now()}})
+
+
+async def _attribute_referral_signup(user: dict, ref_code: Optional[str], origin: str, background: BackgroundTasks, request: Optional[Request] = None):
     code = (ref_code or "").strip().lower() or None
     if not code:
         return
@@ -503,6 +524,8 @@ async def _attribute_referral_signup(user: dict, ref_code: Optional[str], origin
     })
     await grant_aed(referrer["user_id"], 50)
     await add_activity(referrer["user_id"], "referral", f"Referred {user['name']}", 50)
+    if request is not None:
+        await _mark_click_converted(code, request)
     background.add_task(
         send_milestone_done, referrer["email"], referrer["name"],
         f"Friend joined · {user['name']}", 50, referrer["aed_balance"] + 50, origin,
@@ -581,11 +604,12 @@ async def auth_email_verify(payload: EmailVerify, request: Request, response: Re
         await db.users.insert_one(user_doc)
         await ensure_user_milestones(user_id)
         await add_activity(user_id, "join", "Joined the OneX waitlist", reward=100)
+        user_doc.pop("_id", None)
         user = user_doc
 
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
     if is_new_user:
-        await _attribute_referral_signup(user, rec.get("ref"), origin, background)
+        await _attribute_referral_signup(user, rec.get("ref"), origin, background, request)
         background.add_task(send_welcome, user["email"], user["name"], origin)
 
     session_token = f"email_{uuid.uuid4().hex}"
@@ -1014,6 +1038,7 @@ async def register_webinar(payload: WebinarAction, request: Request, background:
             })
             await grant_aed(referrer["user_id"], 50)
             await add_activity(referrer["user_id"], "referral", f"Webinar invite · {user['name']}", 50)
+            await _mark_click_converted(ref_code, request)
             background.add_task(
                 send_milestone_done, referrer["email"], referrer["name"],
                 f"Friend joined a webinar · {user['name']}", 50, referrer["aed_balance"] + 50, origin,
@@ -1051,29 +1076,151 @@ async def remind_webinar(payload: WebinarAction, request: Request, background: B
 
 
 # -------------------- Referrals --------------------
+REFERRAL_TTL_DAYS = 30  # a click is "active" for 30 days, then "expired" if no signup attribution happened.
+
+
+def _public_app_url() -> str:
+    return os.environ.get("PUBLIC_APP_URL", "https://onex.finance").rstrip("/")
+
+
+def _email_partial(email: str) -> str:
+    if not email or "@" not in email:
+        return email or ""
+    local, domain = email.split("@", 1)
+    masked = local[0] + "•" * max(1, len(local) - 2) + (local[-1] if len(local) > 1 else "")
+    return f"{masked}@{domain}"
+
+
+class ReferralClick(BaseModel):
+    code: str
+    source: Optional[str] = None  # "landing" | "login" etc.
+
+
+@api.post("/referrals/click")
+async def track_referral_click(payload: ReferralClick, request: Request):
+    """Public endpoint — anyone landing with ?ref= gets logged. No auth required."""
+    code = (payload.code or "").strip().lower()
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing code")
+    referrer = await db.users.find_one({"referral_code": code}, {"_id": 0, "user_id": 1, "name": 1})
+    if not referrer:
+        return {"ok": False, "valid": False}
+    # De-duplicate by (code + visitor cookie) within the same browser session.
+    visitor = request.cookies.get("onex_visitor")
+    if not visitor:
+        visitor = str(uuid.uuid4())
+    await db.referral_clicks.insert_one({
+        "id": str(uuid.uuid4()),
+        "referrer_id": referrer["user_id"],
+        "code": code,
+        "visitor_id": visitor,
+        "user_agent": request.headers.get("user-agent", ""),
+        "ip": request.client.host if request.client else "",
+        "source": payload.source or "landing",
+        "created_at": _now(),
+        "converted": False,
+    })
+    resp = JSONResponse({"ok": True, "valid": True, "referrer_name": referrer.get("name", "A friend")})
+    if not request.cookies.get("onex_visitor"):
+        resp.set_cookie("onex_visitor", visitor, max_age=60 * 60 * 24 * REFERRAL_TTL_DAYS, httponly=False, samesite="lax")
+    return resp
+
+
 @api.get("/referrals")
 async def get_referrals(user: CurrentUser):
-    referrals = await db.referrals.find({"referrer_id": user["user_id"]}, {"_id": 0}).to_list(100)
-    verified = [r for r in referrals if r.get("verified")]
-    kyc_done = [r for r in referrals if r.get("kyc_completed")]
-    backend = os.environ.get("PUBLIC_APP_URL", "")
-    link_base = backend if backend else ""
+    raw = await db.referrals.find({"referrer_id": user["user_id"]}, {"_id": 0}).to_list(200)
+    now = datetime.now(timezone.utc)
+
+    # Build click summary scoped to this referrer.
+    clicks = await db.referral_clicks.find({"referrer_id": user["user_id"]}, {"_id": 0}).to_list(500)
+    unique_visitors = {c["visitor_id"] for c in clicks if c.get("visitor_id")}
+    converted_visitors = {c["visitor_id"] for c in clicks if c.get("converted")}
+
+    referees: list[dict] = []
+    aed_earned = 0
+    for r in raw:
+        referee_id = r.get("referee_id")
+        # Fetch referee snapshot.
+        referee = await db.users.find_one({"user_id": referee_id}, {"_id": 0, "email": 1, "name": 1, "tier": 1, "aed_balance": 1, "created_at": 1}) if referee_id else None
+        kyc_done = bool(r.get("kyc_completed"))
+        verified = bool(r.get("verified"))
+        webinar_attended = bool(r.get("webinar_attended"))
+        per_friend_aed = 0
+        if verified:
+            per_friend_aed += 50
+        if kyc_done:
+            per_friend_aed += 100
+        if webinar_attended:
+            per_friend_aed += 50
+        aed_earned += per_friend_aed
+        status = "signed_up"
+        if kyc_done:
+            status = "kyc_completed"
+        elif verified:
+            status = "verified"
+        referees.append({
+            "id": r.get("id"),
+            "name": (referee or {}).get("name") or "Friend",
+            "email": _email_partial((referee or {}).get("email") or r.get("referee_email", "")),
+            "tier": (referee or {}).get("tier") or "Cadet",
+            "via": r.get("via", "link"),
+            "joined_at": (referee or {}).get("created_at") or r.get("created_at"),
+            "verified": verified,
+            "kyc_completed": kyc_done,
+            "webinar_attended": webinar_attended,
+            "status": status,
+            "aed_earned": per_friend_aed,
+        })
+
+    # Clicks that never converted, bucketed by expiry.
+    converted_signups = len(referees)
+    ttl_cutoff = now - timedelta(days=REFERRAL_TTL_DAYS)
+    pending_clicks: list[dict] = []
+    expired_clicks: list[dict] = []
+    seen: set = set()
+    for c in clicks:
+        vid = c.get("visitor_id")
+        if not vid or vid in seen or vid in converted_visitors:
+            continue
+        seen.add(vid)
+        try:
+            ts = datetime.fromisoformat(c["created_at"].replace("Z", "+00:00")) if isinstance(c.get("created_at"), str) else c["created_at"]
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except Exception:  # noqa: BLE001
+            ts = now
+        bucket = expired_clicks if ts < ttl_cutoff else pending_clicks
+        bucket.append({
+            "id": c.get("id"),
+            "source": c.get("source", "landing"),
+            "clicked_at": c.get("created_at"),
+            "user_agent_short": (c.get("user_agent", "") or "")[:60],
+            "status": "expired" if bucket is expired_clicks else "pending",
+        })
+
     return {
         "referral_code": user["referral_code"],
-        "referral_link": f"{link_base}/?ref={user['referral_code']}" if link_base else f"https://onex.club/?ref={user['referral_code']}",
+        "referral_link": f"{_public_app_url()}/?ref={user['referral_code']}",
         "stats": {
-            "invites_sent": len(referrals),
-            "verified": len(verified),
-            "kyc_completed": len(kyc_done),
-            "aed_earned": len(verified) * 50 + len(kyc_done) * 100,
+            "invites_sent": converted_signups + len(pending_clicks) + len(expired_clicks),
+            "clicks_total": len(clicks),
+            "clicks_unique": len(unique_visitors),
+            "signups": converted_signups,
+            "verified": sum(1 for r in referees if r["verified"]),
+            "kyc_completed": sum(1 for r in referees if r["kyc_completed"]),
+            "pending": len(pending_clicks),
+            "expired": len(expired_clicks),
+            "aed_earned": aed_earned,
         },
         "missions": [
-            {"id": "invite", "title": "Invite a Friend", "subtitle": "Share your link with one friend.", "aed": 50, "completed": len(referrals) >= 1},
-            {"id": "verify_mobile", "title": "Friend Verifies Mobile", "subtitle": "They confirm their number.", "aed": 25, "completed": len(verified) >= 1},
-            {"id": "complete_kyc", "title": "Friend Completes KYC", "subtitle": "They verify identity.", "aed": 100, "completed": len(kyc_done) >= 1},
-            {"id": "attend_webinar", "title": "Friend Attends Webinar", "subtitle": "They join a OneX webinar.", "aed": 50, "completed": False},
+            {"id": "invite", "title": "Invite a Friend", "subtitle": "Share your link with one friend.", "aed": 50, "completed": converted_signups >= 1},
+            {"id": "verify_mobile", "title": "Friend Verifies Mobile", "subtitle": "They confirm their number.", "aed": 25, "completed": any(r["verified"] for r in referees)},
+            {"id": "complete_kyc", "title": "Friend Completes KYC", "subtitle": "They verify identity.", "aed": 100, "completed": any(r["kyc_completed"] for r in referees)},
+            {"id": "attend_webinar", "title": "Friend Attends Webinar", "subtitle": "They join a OneX webinar.", "aed": 50, "completed": any(r["webinar_attended"] for r in referees)},
         ],
-        "referrals": referrals,
+        "referees": referees,
+        "pending_clicks": pending_clicks[:20],
+        "expired_clicks": expired_clicks[:20],
     }
 
 

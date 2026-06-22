@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider } from "@/contexts/AuthContext";
 import AppLayout from "@/components/layout/AppLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import ReferralCapture from "@/components/ReferralCapture";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
 import Dashboard from "@/pages/Dashboard";
@@ -25,7 +26,9 @@ const AppRouter = () => {
     return <AuthCallback />;
   }
   return (
-    <Routes>
+    <>
+      <ReferralCapture />
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -44,6 +47,7 @@ const AppRouter = () => {
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </>
   );
 };
 

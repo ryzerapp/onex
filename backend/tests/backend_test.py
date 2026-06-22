@@ -377,3 +377,175 @@ class TestSettingsPhoneUpdate:
         again = client.get(f"{API}/settings").json()
         assert again["user"].get("phone") == new_phone
 
+
+
+# -------------------- NEW: Iteration 3 — Referral flow (URL + click tracking + attribution) --------------------
+class TestReferralLinkUrl:
+    """GET /api/referrals must use PUBLIC_APP_URL (https://onex.finance)."""
+
+    def test_referral_link_uses_onex_finance(self, client):
+        r = client.get(f"{API}/referrals")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["referral_link"].startswith("https://onex.finance/?ref="), d["referral_link"]
+        assert d["referral_code"] in d["referral_link"]
+
+    def test_referrals_payload_shape(self, client):
+        """New rich shape: referees + pending_clicks + expired_clicks + 9 stats."""
+        d = client.get(f"{API}/referrals").json()
+        assert "referees" in d and isinstance(d["referees"], list)
+        assert "pending_clicks" in d and isinstance(d["pending_clicks"], list)
+        assert "expired_clicks" in d and isinstance(d["expired_clicks"], list)
+        for sk in ["invites_sent", "clicks_total", "clicks_unique", "signups",
+                   "verified", "kyc_completed", "pending", "expired", "aed_earned"]:
+            assert sk in d["stats"], f"stats missing {sk}"
+            assert isinstance(d["stats"][sk], int)
+
+
+class TestReferralClickPublic:
+    """POST /api/referrals/click is PUBLIC (no auth)."""
+
+    def test_click_invalid_code(self):
+        """Invalid code returns ok:false, valid:false and creates NO row."""
+        anon = requests.Session()
+        before = requests.get(
+            f"{API}/referrals",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        ).json()["stats"]["clicks_total"]
+        r = anon.post(f"{API}/referrals/click",
+                      json={"code": "definitely-not-a-real-code-xyz123", "source": "landing"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body == {"ok": False, "valid": False}
+        # No new row should have been added
+        after = requests.get(
+            f"{API}/referrals",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        ).json()["stats"]["clicks_total"]
+        assert after == before
+
+    def test_click_valid_sets_cookie_and_dedupes(self, client):
+        """First click sets onex_visitor cookie; second click reuses it (deduped in clicks_unique)."""
+        code = client.get(f"{API}/referrals").json()["referral_code"]
+        before_stats = client.get(f"{API}/referrals").json()["stats"]
+        before_total = before_stats["clicks_total"]
+        before_unique = before_stats["clicks_unique"]
+
+        anon = requests.Session()  # fresh, NO bearer token
+        # First click (no cookie sent)
+        r1 = anon.post(f"{API}/referrals/click",
+                       json={"code": code, "source": "landing"})
+        assert r1.status_code == 200
+        b1 = r1.json()
+        assert b1["ok"] is True and b1["valid"] is True
+        assert "referrer_name" in b1 and b1["referrer_name"]
+        # Cookie set?
+        assert "onex_visitor" in anon.cookies, f"expected onex_visitor cookie, got {anon.cookies}"
+        visitor = anon.cookies.get("onex_visitor")
+        assert visitor
+
+        # Second click WITH same cookie (same session). Should dedupe in clicks_unique.
+        r2 = anon.post(f"{API}/referrals/click",
+                       json={"code": code, "source": "landing"})
+        assert r2.status_code == 200
+        assert r2.json()["ok"] is True
+
+        after_stats = client.get(f"{API}/referrals").json()["stats"]
+        # clicks_total should grow by 2 (rows), clicks_unique by 1 (single visitor)
+        assert after_stats["clicks_total"] == before_total + 2, \
+            f"clicks_total {before_total}->{after_stats['clicks_total']}"
+        assert after_stats["clicks_unique"] == before_unique + 1, \
+            f"clicks_unique {before_unique}->{after_stats['clicks_unique']} (dedup failed)"
+
+    def test_click_pending_clicks_visible_to_referrer(self, client):
+        """Pending clicks (no signup) appear in pending_clicks list, not referees."""
+        code = client.get(f"{API}/referrals").json()["referral_code"]
+        anon = requests.Session()
+        anon.post(f"{API}/referrals/click", json={"code": code, "source": "landing"})
+        d = client.get(f"{API}/referrals").json()
+        assert d["stats"]["pending"] >= 1
+        # No signups should have happened from this anon click
+        # referees count == signups stat
+        assert d["stats"]["signups"] == len(d["referees"])
+
+
+class TestReferralSignupAttribution:
+    """Email OTP signup with ?ref=<code> credits referrer +AED 50 and marks click converted."""
+
+    def test_signup_with_ref_credits_referrer_and_marks_click_converted(self, client):
+        # 1) Snapshot referrer state
+        before = client.get(f"{API}/referrals").json()
+        code = before["referral_code"]
+        balance_before = client.get(f"{API}/auth/me").json()["user"]["aed_balance"]
+        signups_before = before["stats"]["signups"]
+        pending_before = before["stats"]["pending"]
+
+        # 2) Anonymous visitor clicks the link first (sets visitor cookie)
+        anon = requests.Session()
+        click_r = anon.post(f"{API}/referrals/click",
+                            json={"code": code, "source": "landing"})
+        assert click_r.json()["ok"] is True
+        assert "onex_visitor" in anon.cookies
+
+        # 3) New user starts email OTP with ref
+        unique_email = f"test_ref_{uuid_hex()}@onex-qa.example"
+        start = anon.post(f"{API}/auth/email/start",
+                          json={"email": unique_email, "ref": code})
+        assert start.status_code == 200
+
+        # 4) Pull OTP from Mongo (test backdoor not available; use the stored code via API not possible)
+        # The OTP code is generated server-side; we'll fetch it from the email_otps collection
+        # via a mongo shell.
+        import subprocess
+        otp_proc = subprocess.run(
+            ["mongosh", "--quiet", "--eval",
+             f'JSON.stringify(db.getSiblingDB("test_database").email_otps.findOne({{email:"{unique_email}"}}, {{code:1,_id:0}}))'],
+            capture_output=True, text=True, timeout=10,
+        )
+        if otp_proc.returncode != 0 or "code" not in otp_proc.stdout:
+            pytest.skip(f"Could not retrieve OTP from mongo: {otp_proc.stdout} {otp_proc.stderr}")
+        import json as _json
+        otp = _json.loads(otp_proc.stdout.strip())["code"]
+
+        # 5) Verify with that OTP
+        verify = anon.post(f"{API}/auth/email/verify",
+                           json={"email": unique_email, "code": otp})
+        assert verify.status_code == 200, verify.text
+        new_user = verify.json()["user"]
+        assert new_user["email"] == unique_email
+
+        # 6) Referrer must have +50 AED
+        balance_after = client.get(f"{API}/auth/me").json()["user"]["aed_balance"]
+        assert balance_after == balance_before + 50, \
+            f"balance {balance_before} -> {balance_after} (expected +50)"
+
+        # 7) New referee shows up in referees with status='verified'
+        after = client.get(f"{API}/referrals").json()
+        assert after["stats"]["signups"] == signups_before + 1
+        matching = [r for r in after["referees"] if unique_email.split("@")[0] in (r.get("email") or "")]
+        # Email is partially masked, so just check that the most-recent referee exists
+        assert len(after["referees"]) > len(before.get("referees", []))
+        last = after["referees"][-1] if after["referees"] else None
+        if last:
+            assert last["status"] in ("verified", "kyc_completed"), last["status"]
+            assert last["verified"] is True
+
+        # 8) Click should now be converted, so pending decreases by at least 1
+        assert after["stats"]["pending"] <= pending_before, \
+            f"pending should decrease after conversion: {pending_before} -> {after['stats']['pending']}"
+
+        # 9) Cleanup: drop the new test user + their referral row
+        cleanup_email = unique_email
+        subprocess.run(
+            ["mongosh", "--quiet", "--eval",
+             f'db.getSiblingDB("test_database").users.deleteOne({{email:"{cleanup_email}"}}); '
+             f'db.getSiblingDB("test_database").referrals.deleteOne({{referee_email:"{cleanup_email}"}}); '
+             f'db.getSiblingDB("test_database").user_sessions.deleteMany({{user_id:"{new_user["user_id"]}"}});'
+             f'db.getSiblingDB("test_database").users.updateOne({{user_id:"{USER_ID}"}}, {{$inc:{{aed_balance:-50}}}});'],
+            capture_output=True, text=True, timeout=10,
+        )
+
+
+def uuid_hex():
+    import uuid as _uuid
+    return _uuid.uuid4().hex[:10]
