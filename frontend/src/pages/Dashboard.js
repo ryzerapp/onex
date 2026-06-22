@@ -56,7 +56,7 @@ const Dashboard = () => {
     return <div className="text-zinc-500" data-testid="dashboard-loading">Loading your journey…</div>;
   }
 
-  const { user, next_milestone, next_tier, spotlight_property, next_webinar, stats, recent_activity } = data;
+  const { user, next_milestone, next_reward, all_milestones_done, next_tier, spotlight_property, stats, recent_activity } = data;
   const nextMilestonePct = data.milestones_total ? Math.round((data.milestones_completed / data.milestones_total) * 100) : 0;
   const tierPct = Math.min(100, Math.round((user.aed_balance / next_tier.threshold) * 100));
 
@@ -96,32 +96,68 @@ const Dashboard = () => {
 
       {/* Top trio */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-        {/* Next milestone */}
-        <div className="onex-card p-6 sm:p-7" data-testid="dashboard-next-milestone-card">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-[12px] uppercase tracking-[0.18em] text-zinc-500">Your Next Milestone</div>
-              <h3 className="text-[22px] font-semibold text-white mt-3">{next_milestone?.title || "Journey Complete"}</h3>
-              <p className="text-zinc-400 text-[14px] mt-1.5 max-w-[260px]">{next_milestone?.subtitle}</p>
+        {/* Next milestone / tier rollover */}
+        {all_milestones_done && next_reward?.kind !== "milestone" ? (
+          <div className="onex-card p-6 sm:p-7" data-testid="dashboard-next-milestone-card">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-[12px] uppercase tracking-[0.18em] text-[#22C55E] flex items-center gap-1.5">
+                  <CheckCircle2 size={12} /> Journey Complete
+                </div>
+                <h3 className="text-[22px] font-semibold text-white mt-3">
+                  {next_reward?.kind === "maxed" ? "Elite Co-Owner" : next_reward?.label}
+                </h3>
+                <p className="text-zinc-400 text-[14px] mt-1.5 max-w-[260px]">
+                  {next_reward?.kind === "maxed"
+                    ? "Every benefit unlocked. Welcome to the top tier."
+                    : `AED ${next_reward?.amount} until your next tier unlocks.`}
+                </p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center">
+                <Star size={22} className="text-[#FACC15]" />
+              </div>
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-[#1F3A2D] border border-[#22C55E]/30 flex items-center justify-center">
-              {(() => { const Icon = iconMap[next_milestone?.icon] || Flag; return <Icon size={22} className="text-[#22C55E]" />; })()}
+            <div className="mt-6">
+              <div className="flex items-center justify-between text-[12px] text-zinc-400">
+                <span>AED {user.aed_balance} / AED {next_reward?.tier_threshold || next_tier.threshold}</span>
+              </div>
+              <div className="h-2 mt-2 rounded-full bg-[#27272A] overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-[#FACC15] to-[#EAB308]" style={{ width: `${tierPct}%` }} />
+              </div>
             </div>
+            <button
+              onClick={() => navigate("/benefits-ladder")}
+              data-testid="dashboard-earn-more-aed-btn"
+              className="mt-6 w-full btn-gold"
+            >Earn More AED <ArrowRight size={16} /></button>
           </div>
-          <div className="mt-6">
-            <div className="flex items-center justify-between text-[12px] text-zinc-400">
-              <span>{data.milestones_completed} / {data.milestones_total} Completed</span>
+        ) : (
+          <div className="onex-card p-6 sm:p-7" data-testid="dashboard-next-milestone-card">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-[12px] uppercase tracking-[0.18em] text-zinc-500">Your Next Milestone</div>
+                <h3 className="text-[22px] font-semibold text-white mt-3">{next_milestone?.title || "Journey Complete"}</h3>
+                <p className="text-zinc-400 text-[14px] mt-1.5 max-w-[260px]">{next_milestone?.subtitle}</p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-[#1F3A2D] border border-[#22C55E]/30 flex items-center justify-center">
+                {(() => { const Icon = iconMap[next_milestone?.icon] || Flag; return <Icon size={22} className="text-[#22C55E]" />; })()}
+              </div>
             </div>
-            <div className="h-2 mt-2 rounded-full bg-[#27272A] overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-[#22C55E] to-[#16A34A]" style={{ width: `${nextMilestonePct}%` }} />
+            <div className="mt-6">
+              <div className="flex items-center justify-between text-[12px] text-zinc-400">
+                <span>{data.milestones_completed} / {data.milestones_total} Completed</span>
+              </div>
+              <div className="h-2 mt-2 rounded-full bg-[#27272A] overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-[#22C55E] to-[#16A34A]" style={{ width: `${nextMilestonePct}%` }} />
+              </div>
             </div>
-          </div>
           <button
             onClick={() => navigate("/progress")}
             data-testid="dashboard-continue-journey-btn"
             className="mt-6 w-full btn-ghost border-[#FACC15]/30 text-[#FACC15] hover:border-[#FACC15]"
           >Continue Journey <ArrowRight size={16} /></button>
-        </div>
+          </div>
+        )}
 
         {/* Property spotlight */}
         {spotlight_property && (

@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import ProgressRing from "@/components/common/ProgressRing";
+import TopUpModal, { POLL_INTERVAL_MS, MAX_POLLS } from "@/components/payments/TopUpModal";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   User, Lock, ArrowRight, CheckCircle2, Headphones, Camera, ShieldCheck, Home as HomeIcon,
-  Building2, UserPlus, Calendar, Wallet, History,
+  Building2, UserPlus, Calendar, Wallet, History, Plus, Loader2,
 } from "lucide-react";
 
 const iconMap = { calendar: Calendar, "user-plus": UserPlus, "shield-check": ShieldCheck, home: HomeIcon, "building-2": Building2 };
@@ -14,8 +17,69 @@ const NEXT_TIER_RING_STROKE = 8;
 
 const BenefitsLadder = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { refresh } = useAuth();
   const [data, setData] = useState(null);
-  useEffect(() => { api.get("/benefits-ladder").then(({ data }) => setData(data)); }, []);
+  const [topupOpen, setTopupOpen] = useState(false);
+  const [pollState, setPollState] = useState(null); // null | "polling" | "success" | "expired"
+
+  const load = useCallback(() => api.get("/benefits-ladder").then(({ data }) => setData(data)), []);
+  useEffect(() => { load(); }, [load]);
+
+  // Handle Stripe return — poll /api/payments/status/{session_id} until paid or expired
+  useEffect(() => {
+    const sessionId = searchParams.get("session_id");
+    const topupStatus = searchParams.get("topup");
+    if (!sessionId) {
+      if (topupStatus === "cancel") {
+        toast.message("Top-up cancelled", { description: "Your card was not charged." });
+        setSearchParams({}, { replace: true });
+      }
+      return;
+    }
+
+    setPollState("polling");
+    let attempts = 0;
+    let cancelled = false;
+
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const { data: status } = await api.get(`/payments/status/${sessionId}`);
+        if (cancelled) return;
+        if (status.payment_status === "paid") {
+          setPollState("success");
+          toast.success(`+AED ${status.aed_credited} credited`, { description: `New balance: AED ${status.aed_balance}` });
+          await refresh();
+          load();
+          setSearchParams({}, { replace: true });
+          return;
+        }
+        if (status.status === "expired") {
+          setPollState("expired");
+          toast.error("Checkout expired. Please try again.");
+          setSearchParams({}, { replace: true });
+          return;
+        }
+        if (attempts >= MAX_POLLS) {
+          setPollState("expired");
+          toast.message("Still processing", { description: "We'll credit your balance the moment Stripe confirms." });
+          return;
+        }
+        setTimeout(poll, POLL_INTERVAL_MS);
+      } catch (e) {
+        if (cancelled) return;
+        if (attempts >= MAX_POLLS) {
+          setPollState("expired");
+          return;
+        }
+        setTimeout(poll, POLL_INTERVAL_MS);
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [searchParams, setSearchParams, refresh, load]);
+
   if (!data) return <div className="text-zinc-500" data-testid="ladder-loading">Loading benefits…</div>;
 
   const balance = data.balance;
@@ -161,6 +225,9 @@ const BenefitsLadder = () => {
               <div className="text-[#FACC15] text-[18px] font-semibold">AED {data.next_tier.remaining}</div>
             </div>
             <button onClick={() => navigate("/progress")} className="mt-5 w-full btn-gold" data-testid="ladder-earn-more-btn">Earn More AED <ArrowRight size={16} /></button>
+            <button onClick={() => setTopupOpen(true)} className="mt-3 w-full btn-ghost border-[#FACC15]/40 text-[#FACC15]" data-testid="ladder-topup-btn">
+              {pollState === "polling" ? <><Loader2 size={14} className="animate-spin" /> Confirming top-up…</> : <><Plus size={14} /> Top up AED Balance</>}
+            </button>
           </div>
 
           <div className="onex-card p-6" data-testid="ladder-balance-summary-card">
@@ -180,6 +247,7 @@ const BenefitsLadder = () => {
           </div>
         </div>
       </div>
+      <TopUpModal open={topupOpen} onClose={() => setTopupOpen(false)} />
     </div>
   );
 };

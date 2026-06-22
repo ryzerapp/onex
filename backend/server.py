@@ -18,6 +18,12 @@ from typing import List, Optional, Annotated
 
 import httpx
 from dotenv import load_dotenv
+from emergentintegrations.payments.stripe.checkout import (
+    CheckoutSessionRequest,
+    CheckoutSessionResponse,
+    CheckoutStatusResponse,
+    StripeCheckout,
+)
 from fastapi import APIRouter, Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
@@ -409,6 +415,8 @@ async def dashboard(user: CurrentUser):
     recent_activity = await db.activity_log.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(8)
 
     lb_rank = await _user_rank(user["user_id"])
+    next_reward = _compute_next_reward(milestones, user["aed_balance"])
+    all_milestones_done = len(milestones) > 0 and len(completed) == len(milestones)
 
     return {
         "user": user,
@@ -416,6 +424,8 @@ async def dashboard(user: CurrentUser):
         "milestones_completed": len(completed),
         "milestones_total": len(milestones),
         "next_milestone": next_milestone,
+        "next_reward": next_reward,
+        "all_milestones_done": all_milestones_done,
         "next_tier": next_tier,
         "spotlight_property": spotlight_doc,
         "next_webinar": next_webinar,
@@ -930,6 +940,159 @@ async def update_settings(payload: SettingsUpdate, user: CurrentUser):
     )
     if payload.name:
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"name": payload.name}})
+    return {"ok": True}
+
+
+# -------------------- AED top-up (Stripe) --------------------
+# Backend is the single source of truth for prices — never trust an amount from the client.
+AED_PACKAGES = {
+    "starter": {"id": "starter", "name": "Starter Pack", "aed": 250, "usd": 29.0, "tagline": "Kickstart your balance."},
+    "builder": {"id": "builder", "name": "Builder Pack", "aed": 500, "usd": 55.0, "tagline": "Unlock Co-Owner Member."},
+    "pro": {"id": "pro", "name": "Pro Pack", "aed": 1500, "usd": 149.0, "tagline": "Best value — most popular."},
+    "elite": {"id": "elite", "name": "Elite Pack", "aed": 3000, "usd": 279.0, "tagline": "Fast-track Priority Co-Owner."},
+}
+
+
+class CheckoutPayload(BaseModel):
+    package_id: str
+    origin_url: str
+
+
+@api.get("/payments/packages")
+async def list_packages(user: CurrentUser):
+    return {"packages": list(AED_PACKAGES.values())}
+
+
+@api.post("/payments/checkout")
+async def create_checkout(payload: CheckoutPayload, request: Request, user: CurrentUser):
+    pkg = AED_PACKAGES.get(payload.package_id)
+    if not pkg:
+        raise HTTPException(status_code=400, detail="Invalid package")
+
+    api_key = os.environ.get("STRIPE_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Stripe is not configured")
+
+    host_url = str(request.base_url)
+    webhook_url = f"{host_url}api/webhook/stripe"
+    stripe = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+
+    origin = payload.origin_url.rstrip("/")
+    success_url = f"{origin}/benefits-ladder?session_id={{CHECKOUT_SESSION_ID}}&topup=success"
+    cancel_url = f"{origin}/benefits-ladder?topup=cancel"
+
+    req = CheckoutSessionRequest(
+        amount=float(pkg["usd"]),
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={
+            "user_id": user["user_id"],
+            "package_id": pkg["id"],
+            "aed_amount": str(pkg["aed"]),
+            "source": "aed_topup",
+        },
+    )
+    session: CheckoutSessionResponse = await stripe.create_checkout_session(req)
+
+    await db.payment_transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "session_id": session.session_id,
+        "package_id": pkg["id"],
+        "amount_usd": pkg["usd"],
+        "aed_amount": pkg["aed"],
+        "currency": "usd",
+        "status": "initiated",
+        "payment_status": "unpaid",
+        "credited": False,
+        "metadata": req.metadata,
+        "created_at": _now(),
+        "updated_at": _now(),
+    })
+
+    return {"url": session.url, "session_id": session.session_id, "package": pkg}
+
+
+async def _credit_payment(tx: dict) -> dict:
+    """Idempotent — credits AED only if not already credited."""
+    if tx.get("credited"):
+        return tx
+    aed = int(tx["aed_amount"])
+    await grant_aed(tx["user_id"], aed)
+    await add_activity(
+        tx["user_id"],
+        "topup",
+        f"AED top-up · {tx['package_id'].title()} Pack",
+        aed,
+    )
+    await db.payment_transactions.update_one(
+        {"_id": tx["_id"]},
+        {"$set": {"credited": True, "credited_at": _now()}},
+    )
+    tx["credited"] = True
+    return tx
+
+
+@api.get("/payments/status/{session_id}")
+async def checkout_status(session_id: str, request: Request, user: CurrentUser):
+    tx = await db.payment_transactions.find_one({"session_id": session_id})
+    if not tx or tx["user_id"] != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    api_key = os.environ.get("STRIPE_API_KEY")
+    host_url = str(request.base_url)
+    stripe = StripeCheckout(api_key=api_key, webhook_url=f"{host_url}api/webhook/stripe")
+    status: CheckoutStatusResponse = await stripe.get_checkout_status(session_id)
+
+    await db.payment_transactions.update_one(
+        {"_id": tx["_id"]},
+        {"$set": {
+            "status": status.status,
+            "payment_status": status.payment_status,
+            "amount_total": status.amount_total,
+            "currency": status.currency,
+            "updated_at": _now(),
+        }},
+    )
+
+    if status.payment_status == "paid":
+        tx = await db.payment_transactions.find_one({"_id": tx["_id"]})
+        await _credit_payment(tx)
+
+    fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {
+        "status": status.status,
+        "payment_status": status.payment_status,
+        "package_id": tx.get("package_id"),
+        "aed_credited": int(tx["aed_amount"]) if status.payment_status == "paid" else 0,
+        "aed_balance": fresh_user["aed_balance"],
+        "tier": fresh_user["tier"],
+    }
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    body = await request.body()
+    signature = request.headers.get("Stripe-Signature", "")
+    api_key = os.environ.get("STRIPE_API_KEY")
+    host_url = str(request.base_url)
+    stripe = StripeCheckout(api_key=api_key, webhook_url=f"{host_url}api/webhook/stripe")
+    try:
+        event = await stripe.handle_webhook(body, signature)
+    except Exception as e:  # noqa: BLE001
+        log.warning("stripe webhook verification failed: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid webhook")
+
+    if event.payment_status == "paid" and event.session_id:
+        tx = await db.payment_transactions.find_one({"session_id": event.session_id})
+        if tx and not tx.get("credited"):
+            await db.payment_transactions.update_one(
+                {"_id": tx["_id"]},
+                {"$set": {"status": "complete", "payment_status": "paid", "updated_at": _now()}},
+            )
+            tx = await db.payment_transactions.find_one({"_id": tx["_id"]})
+            await _credit_payment(tx)
     return {"ok": True}
 
 
