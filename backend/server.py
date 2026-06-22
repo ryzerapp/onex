@@ -34,7 +34,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
-from email_service import send_milestone_done, send_topup_receipt, send_welcome
+from email_service import send_milestone_done, send_topup_receipt, send_welcome, send_webinar_reminder, send_support_inbound
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -84,6 +84,21 @@ class EmailVerify(BaseModel):
 
 # Jitsi/JaaS (8x8.vc) room URL generator.
 JAAS_TENANT = "vpaas-magic-cookie-0df12bf583cb40bbb594a16083d20aaa"
+
+
+# Webinar live-window detection. A webinar is "Go Live" only inside its real start→end window.
+def _webinar_is_live(w: dict) -> bool:
+    if w.get("status") != "upcoming":
+        return False
+    try:
+        start = datetime.fromisoformat(w["date"].replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return False
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    end = start + timedelta(minutes=int(w.get("duration_minutes", 60)))
+    now = datetime.now(timezone.utc)
+    return start <= now <= end
 
 
 def _webinar_room_url(webinar_id: str) -> str:
@@ -239,11 +254,11 @@ CATEGORY_SEED = [
 ]
 
 WEBINAR_SEED = [
-    {"id": "wb_dubai_airbnb_master", "title": "Dubai Airbnb Masterclass", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-03-12T17:00:00Z", "duration_minutes": 60, "attendees": 412, "aed_reward": 25, "description": "Learn how to maximise yield from Dubai short-stay rentals.", "status": "upcoming", "featured": True},
-    {"id": "wb_yield_strategies", "title": "High-Yield Allocation Strategies", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-03-26T16:30:00Z", "duration_minutes": 75, "attendees": 268, "aed_reward": 25, "description": "Inside the OneX selection framework for top-tier yield assets.", "status": "upcoming"},
-    {"id": "wb_palm_villa_briefing", "title": "Palm Jumeirah Villa Briefing", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-04-08T17:00:00Z", "duration_minutes": 45, "attendees": 198, "aed_reward": 25, "description": "Allocation walkthrough for our flagship Palm Jumeirah collection.", "status": "upcoming"},
-    {"id": "wb_market_outlook", "title": "Dubai Market Outlook 2026", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/17238022/pexels-photo-17238022.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-01-14T17:00:00Z", "duration_minutes": 60, "attendees": 612, "aed_reward": 0, "description": "Macro analysis of Dubai real estate cycles.", "status": "recorded", "recording_url": "https://example.com/onex/market-outlook"},
-    {"id": "wb_co_ownership_101", "title": "Co-Ownership 101", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2025-12-05T17:00:00Z", "duration_minutes": 50, "attendees": 845, "aed_reward": 0, "description": "Foundational webinar on the OneX co-ownership model.", "status": "recorded", "recording_url": "https://example.com/onex/co-ownership-101"},
+    {"id": "wb_dubai_airbnb_master", "title": "Dubai Airbnb Masterclass", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-03-12T17:00:00Z", "duration_minutes": 60, "attendees": 412, "aed_reward": 25, "description": "Learn how to maximise yield from Dubai short-stay rentals.", "status": "upcoming", "featured": True, "luma_url": "https://luma.com/dveb7fpt"},
+    {"id": "wb_yield_strategies", "title": "High-Yield Allocation Strategies", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-03-26T16:30:00Z", "duration_minutes": 75, "attendees": 268, "aed_reward": 25, "description": "Inside the OneX selection framework for top-tier yield assets.", "status": "upcoming", "luma_url": "https://luma.com/dveb7fpt"},
+    {"id": "wb_palm_villa_briefing", "title": "Palm Jumeirah Villa Briefing", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-04-08T17:00:00Z", "duration_minutes": 45, "attendees": 198, "aed_reward": 25, "description": "Allocation walkthrough for our flagship Palm Jumeirah collection.", "status": "upcoming", "luma_url": "https://luma.com/dveb7fpt"},
+    {"id": "wb_market_outlook", "title": "Dubai Market Outlook 2026", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/17238022/pexels-photo-17238022.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-01-14T17:00:00Z", "duration_minutes": 60, "attendees": 612, "aed_reward": 0, "description": "Macro analysis of Dubai real estate cycles.", "status": "recorded", "recording_url": "https://example.com/onex/market-outlook", "luma_url": "https://luma.com/dveb7fpt"},
+    {"id": "wb_co_ownership_101", "title": "Co-Ownership 101", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2025-12-05T17:00:00Z", "duration_minutes": 50, "attendees": 845, "aed_reward": 0, "description": "Foundational webinar on the OneX co-ownership model.", "status": "recorded", "recording_url": "https://example.com/onex/co-ownership-101", "luma_url": "https://luma.com/dveb7fpt"},
 ]
 
 UPDATES_SEED = [
@@ -290,6 +305,11 @@ async def seed_data():
         await db.categories.insert_many([dict(c) for c in CATEGORY_SEED])
     if await db.webinars.count_documents({}) == 0:
         await db.webinars.insert_many([dict(w) for w in WEBINAR_SEED])
+    # Backfill luma_url on previously-seeded webinars (one-shot migration).
+    await db.webinars.update_many(
+        {"luma_url": {"$exists": False}},
+        {"$set": {"luma_url": "https://luma.com/dveb7fpt"}},
+    )
     if await db.community_updates.count_documents({}) == 0:
         await db.community_updates.insert_many([dict(u) for u in UPDATES_SEED])
     if await db.leaderboard_seed.count_documents({}) == 0:
@@ -667,6 +687,7 @@ async def progress(user: CurrentUser):
 
 class MilestoneAction(BaseModel):
     milestone_id: str
+    phone: Optional[str] = None
 
 
 @api.post("/progress/complete")
@@ -674,6 +695,14 @@ async def complete_milestone(payload: MilestoneAction, request: Request, backgro
     ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]})
     if not ms_doc:
         raise HTTPException(status_code=404, detail="Milestones not found")
+
+    # verify_mobile requires a phone number — persist it on the user.
+    if payload.milestone_id == "verify_mobile":
+        phone = (payload.phone or "").strip()
+        if not phone:
+            raise HTTPException(status_code=400, detail="Phone number is required")
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"phone": phone}})
+        user["phone"] = phone
 
     milestones = ms_doc["milestones"]
     granted = 0
@@ -919,10 +948,16 @@ async def list_webinars(user: CurrentUser, tab: Optional[str] = "upcoming"):
         webinars = await db.webinars.find({"status": "upcoming"}, {"_id": 0}).sort("date", 1).to_list(50)
     for w in webinars:
         w["registered"] = w["id"] in reg_ids
-        w["join_url"] = _webinar_room_url(w["id"])
+        w["luma_url"] = w.get("luma_url") or "https://luma.com/dveb7fpt"
+        w["is_live"] = _webinar_is_live(w)
+        # Backward compat: legacy clients still read `join_url` — now it points to Luma.
+        w["join_url"] = w["luma_url"]
     featured = await db.webinars.find_one({"featured": True}, {"_id": 0})
     if featured:
-        featured["join_url"] = _webinar_room_url(featured["id"])
+        featured["luma_url"] = featured.get("luma_url") or "https://luma.com/dveb7fpt"
+        featured["is_live"] = _webinar_is_live(featured)
+        featured["join_url"] = featured["luma_url"]
+        featured["registered"] = featured["id"] in reg_ids
     return {
         "webinars": webinars,
         "featured": featured,
@@ -945,16 +980,16 @@ async def register_webinar(payload: WebinarAction, request: Request, background:
     if not wb:
         raise HTTPException(status_code=404, detail="Webinar not found")
 
-    room_url = _webinar_room_url(payload.webinar_id)
+    luma_url = wb.get("luma_url") or "https://luma.com/dveb7fpt"
     if existing:
-        return {"ok": True, "already": True, "join_url": room_url}
+        return {"ok": True, "already": True, "join_url": luma_url, "luma_url": luma_url}
 
     await db.webinar_registrations.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
         "webinar_id": payload.webinar_id,
         "attended": False,
-        "join_url": room_url,
+        "join_url": luma_url,
         "created_at": _now(),
     })
     await db.webinars.update_one({"id": payload.webinar_id}, {"$inc": {"attendees": 1}})
@@ -988,7 +1023,31 @@ async def register_webinar(payload: WebinarAction, request: Request, background:
         send_milestone_done, user["email"], user["name"],
         f"Registered · {wb['title']}", 0, user["aed_balance"], f"{origin}/webinars",
     )
-    return {"ok": True, "join_url": room_url}
+    return {"ok": True, "join_url": luma_url, "luma_url": luma_url}
+
+
+@api.post("/webinars/remind")
+async def remind_webinar(payload: WebinarAction, request: Request, background: BackgroundTasks, user: CurrentUser):
+    wb = await db.webinars.find_one({"id": payload.webinar_id}, {"_id": 0})
+    if not wb:
+        raise HTTPException(status_code=404, detail="Webinar not found")
+    reg = await db.webinar_registrations.find_one({"user_id": user["user_id"], "webinar_id": payload.webinar_id})
+    if not reg:
+        raise HTTPException(status_code=400, detail="Register first to set a reminder")
+    luma_url = wb.get("luma_url") or "https://luma.com/dveb7fpt"
+    # Record the reminder so we don't spam the same event repeatedly.
+    await db.webinar_reminders.update_one(
+        {"user_id": user["user_id"], "webinar_id": payload.webinar_id},
+        {"$set": {"updated_at": _now()}, "$setOnInsert": {"created_at": _now()}},
+        upsert=True,
+    )
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    try:
+        when_str = datetime.fromisoformat(wb["date"].replace("Z", "+00:00")).strftime("%a, %d %b %Y · %H:%M UTC")
+    except Exception:  # noqa: BLE001
+        when_str = wb.get("date", "")
+    background.add_task(send_webinar_reminder, user["email"], user["name"], wb["title"], when_str, luma_url, origin)
+    return {"ok": True, "message": "Reminder set — we'll email you before it starts."}
 
 
 # -------------------- Referrals --------------------
@@ -1053,26 +1112,58 @@ async def _user_rank(user_id: str) -> dict:
 
 @api.get("/leaderboard")
 async def get_leaderboard(user: CurrentUser, period: str = "weekly"):
-    # Build pool combining seed leaderboard + actual users + current user
+    """Real time-window aggregates from activity_log for actual users; seed users
+    use a stable scaled value (deterministic, no random noise)."""
+    # Determine the cutoff for "weekly" / "monthly". For all_time we sum everything.
+    period = period if period in ("weekly", "monthly", "all_time") else "weekly"
+    now = datetime.now(timezone.utc)
+    cutoff: Optional[datetime] = None
+    if period == "weekly":
+        cutoff = now - timedelta(days=7)
+    elif period == "monthly":
+        cutoff = now - timedelta(days=30)
+
+    # Aggregate activity_log by user_id within the time window.
+    match: dict = {}
+    if cutoff is not None:
+        match["created_at"] = {"$gte": cutoff.isoformat()}
+    pipeline = [
+        {"$match": match} if match else {"$match": {}},
+        {"$group": {"_id": "$user_id", "total": {"$sum": "$reward"}}},
+    ]
+    agg = await db.activity_log.aggregate(pipeline).to_list(500)
+    earned_by_user = {a["_id"]: int(a["total"]) for a in agg}
+
+    # Seed users — deterministic scaling per period (no random multiplier).
     seed = await db.leaderboard_seed.find({}, {"_id": 0}).to_list(100)
-    others = await db.users.find({"user_id": {"$ne": user["user_id"]}}, {"_id": 0}).to_list(100)
+    period_scale = {"weekly": 0.15, "monthly": 0.45, "all_time": 1.0}[period]
     pool = []
     for s in seed:
-        pool.append({"name": s["name"], "avatar": s["avatar"], "balance": s["balance"], "referrals": s["referrals"], "tier": s["tier"], "is_user": False})
+        pool.append({
+            "name": s["name"], "avatar": s["avatar"],
+            "balance": int(s["balance"] * period_scale),
+            "referrals": s["referrals"], "tier": s["tier"], "is_user": False,
+        })
+    # Real users (other than current) — use actual aggregated AED earned in window.
+    others = await db.users.find({"user_id": {"$ne": user["user_id"]}}, {"_id": 0}).to_list(200)
     for o in others:
-        pool.append({"name": o["name"], "avatar": o.get("picture"), "balance": o["aed_balance"], "referrals": 0, "tier": o.get("tier", "Cadet"), "is_user": False})
-    pool.append({"name": user["name"], "avatar": user.get("picture"), "balance": user["aed_balance"], "referrals": 0, "tier": user.get("tier", "Cadet"), "is_user": True})
-    # Period multiplier just to differentiate values (cosmetic)
-    multiplier = {"weekly": 0.18, "monthly": 0.55, "all_time": 1.0}.get(period, 1.0)
-    pool_period = [
-        {**p, "balance": int(p["balance"] * multiplier) if not p["is_user"] else p["balance"]}
-        for p in pool
-    ]
-    pool_period.sort(key=lambda x: x["balance"], reverse=True)
-    for i, p in enumerate(pool_period):
+        bal = earned_by_user.get(o["user_id"], 0) if period != "all_time" else o.get("aed_balance", 0)
+        pool.append({
+            "name": o["name"], "avatar": o.get("picture"),
+            "balance": int(bal), "referrals": 0,
+            "tier": o.get("tier", "Cadet"), "is_user": False,
+        })
+    me_balance = earned_by_user.get(user["user_id"], 0) if period != "all_time" else user["aed_balance"]
+    pool.append({
+        "name": user["name"], "avatar": user.get("picture"),
+        "balance": int(me_balance), "referrals": 0,
+        "tier": user.get("tier", "Cadet"), "is_user": True,
+    })
+    pool.sort(key=lambda x: x["balance"], reverse=True)
+    for i, p in enumerate(pool):
         p["rank"] = i + 1
-    me = next(p for p in pool_period if p["is_user"])
-    return {"period": period, "podium": pool_period[:3], "list": pool_period[:30], "me": me}
+    me = next(p for p in pool if p["is_user"])
+    return {"period": period, "podium": pool[:3], "list": pool[:30], "me": me}
 
 
 # -------------------- Community updates --------------------
@@ -1146,7 +1237,7 @@ class SupportMessage(BaseModel):
 
 
 @api.post("/support/contact")
-async def support_contact(payload: SupportMessage, user: CurrentUser):
+async def support_contact(payload: SupportMessage, request: Request, background: BackgroundTasks, user: CurrentUser):
     await db.support_messages.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
@@ -1154,6 +1245,9 @@ async def support_contact(payload: SupportMessage, user: CurrentUser):
         "message": payload.message,
         "created_at": _now(),
     })
+    # Forward immediately to the concierge inbox (best-effort, non-blocking).
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    background.add_task(send_support_inbound, dict(user), payload.message, payload.channel, origin)
     return {"ok": True, "message": "Our concierge will reach out within 1 hour."}
 
 
@@ -1176,6 +1270,7 @@ async def get_settings(user: CurrentUser):
 class SettingsUpdate(BaseModel):
     settings: dict
     name: Optional[str] = None
+    phone: Optional[str] = None
 
 
 @api.put("/settings")
@@ -1185,8 +1280,13 @@ async def update_settings(payload: SettingsUpdate, user: CurrentUser):
         {"$set": {"settings": payload.settings, "updated_at": _now()}},
         upsert=True,
     )
+    user_updates: dict = {}
     if payload.name:
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"name": payload.name}})
+        user_updates["name"] = payload.name
+    if payload.phone is not None:
+        user_updates["phone"] = payload.phone.strip()
+    if user_updates:
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": user_updates})
     return {"ok": True}
 
 

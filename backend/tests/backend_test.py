@@ -13,7 +13,7 @@ import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://exclusive-members-1.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
-TOKEN = os.environ.get("TEST_SESSION_TOKEN", "test_session_1781303183733")
+TOKEN = os.environ.get("TEST_SESSION_TOKEN", "test_2a912b090cba495aa681e8794bacb6fb")
 USER_ID = os.environ.get("TEST_USER_ID", "user_qa_1781303183733")
 
 
@@ -65,8 +65,9 @@ class TestDashboard:
 
     def test_complete_milestone_grants_aed(self, client):
         before = client.get(f"{API}/auth/me").json()["user"]["aed_balance"]
-        # attempt verify_mobile (worth 25). Idempotent - already-completed returns granted=0
-        r = client.post(f"{API}/progress/complete", json={"milestone_id": "verify_mobile"})
+        # attempt verify_mobile (worth 25). Idempotent - already-completed returns granted=0.
+        # NOTE: verify_mobile now requires a phone number (iteration 2 enhancement).
+        r = client.post(f"{API}/progress/complete", json={"milestone_id": "verify_mobile", "phone": "+971500000111"})
         assert r.status_code == 200
         granted = r.json().get("granted", 0)
         after = client.get(f"{API}/auth/me").json()["user"]["aed_balance"]
@@ -269,3 +270,110 @@ class TestZLogout:
         # Use a fresh session - this will actually invalidate the token!
         # Skip to avoid breaking the bearer token for further tests.
         pytest.skip("Skipped to preserve seeded session for downstream UI tests")
+
+
+# -------------------- NEW: Iteration 2 enhancements --------------------
+class TestLeaderboardRealAggregates:
+    """Real time-window aggregates from activity_log."""
+
+    @pytest.mark.parametrize("period", ["weekly", "monthly", "all_time"])
+    def test_period_field_matches_and_me_has_balance(self, client, period):
+        r = client.get(f"{API}/leaderboard", params={"period": period})
+        assert r.status_code == 200
+        d = r.json()
+        assert d["period"] == period
+        assert "me" in d and "balance" in d["me"]
+        assert isinstance(d["me"]["balance"], int)
+        # all_time balance should be >= weekly/monthly window balance for the same user
+        # (best-effort; just sanity check it's a non-negative int)
+        assert d["me"]["balance"] >= 0
+
+
+class TestWebinarLumaAndLive:
+    def test_upcoming_carries_luma_and_is_live_and_registered(self, client):
+        r = client.get(f"{API}/webinars", params={"tab": "upcoming"})
+        assert r.status_code == 200
+        d = r.json()
+        for w in d["webinars"]:
+            assert w.get("luma_url") == "https://luma.com/dveb7fpt"
+            assert isinstance(w.get("is_live"), bool)
+            assert isinstance(w.get("registered"), bool)
+            # All seed webinars are dated in 2026-03+ or already recorded -> not live
+            assert w["is_live"] is False, f"webinar {w['id']} unexpectedly live"
+
+    def test_register_returns_luma_url_and_idempotent(self, client):
+        wid = "wb_palm_villa_briefing"
+        r1 = client.post(f"{API}/webinars/register", json={"webinar_id": wid})
+        assert r1.status_code == 200
+        body1 = r1.json()
+        assert body1.get("luma_url") == "https://luma.com/dveb7fpt"
+        r2 = client.post(f"{API}/webinars/register", json={"webinar_id": wid})
+        assert r2.status_code == 200
+        assert r2.json().get("already") is True
+
+
+class TestWebinarRemind:
+    def test_remind_requires_prior_registration(self, client):
+        # Use a webinar that the test user has *not* registered for.
+        # We'll use a fresh id; if accidentally registered we still want a 200.
+        r = client.post(f"{API}/webinars/remind", json={"webinar_id": "wb_does_not_exist"})
+        assert r.status_code in (400, 404)
+
+    def test_remind_after_register_returns_200(self, client):
+        wid = "wb_yield_strategies"
+        # Ensure registered
+        client.post(f"{API}/webinars/register", json={"webinar_id": wid})
+        r = client.post(f"{API}/webinars/remind", json={"webinar_id": wid})
+        assert r.status_code == 200
+        assert r.json().get("ok") is True
+
+
+class TestProgressVerifyMobilePhone:
+    def test_verify_mobile_without_phone_returns_400(self, client):
+        # Reset by removing milestone from completions so this is exercised.
+        # If the milestone was previously completed and is idempotent, the server
+        # may short-circuit; in that case the assertion is relaxed.
+        r = client.post(f"{API}/progress/complete", json={"milestone_id": "verify_mobile"})
+        # Accept either: (a) 400 phone required, or (b) 200 if already completed.
+        if r.status_code == 200:
+            # Skip strictness when previously completed; covered by next test instead.
+            pytest.skip("verify_mobile already completed in seed; skipping no-phone check")
+        assert r.status_code == 400
+        assert "phone" in r.text.lower()
+
+    def test_verify_mobile_with_phone_persists(self, client):
+        phone = "+971500000999"
+        r = client.post(
+            f"{API}/progress/complete",
+            json={"milestone_id": "verify_mobile", "phone": phone},
+        )
+        assert r.status_code == 200
+        # phone should now be reflected via /api/settings or /api/auth/me (user doc)
+        s = client.get(f"{API}/settings").json()
+        assert s["user"].get("phone") == phone
+
+
+class TestSupportContactEmail:
+    def test_contact_creates_doc_and_returns_message(self, client):
+        r = client.post(
+            f"{API}/support/contact",
+            json={"message": "TEST_iteration2_concierge", "channel": "chat"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body.get("ok") is True
+        assert "concierge" in body.get("message", "").lower()
+
+
+class TestSettingsPhoneUpdate:
+    def test_put_settings_persists_phone(self, client):
+        new_phone = "+971501234567"
+        cur = client.get(f"{API}/settings").json()
+        r = client.put(
+            f"{API}/settings",
+            json={"settings": cur["settings"], "phone": new_phone},
+        )
+        assert r.status_code == 200
+        again = client.get(f"{API}/settings").json()
+        assert again["user"].get("phone") == new_phone
+

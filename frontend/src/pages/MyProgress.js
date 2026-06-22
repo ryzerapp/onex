@@ -3,6 +3,7 @@ import { api } from "@/api";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ProgressRing from "@/components/common/ProgressRing";
+import PhoneCaptureModal from "@/components/progress/PhoneCaptureModal";
 import {
   ArrowLeft, Flag, UserPlus, Smartphone, IdCard, Calendar, PieChart,
   CheckCircle2, Gift, Headphones, ChevronDown, ChevronUp, ArrowRight,
@@ -100,9 +101,16 @@ const MyProgress = () => {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [phoneOpen, setPhoneOpen] = useState(false);
 
   const load = useCallback(() => api.get("/progress").then(({ data }) => setData(data)), []);
   useEffect(() => { load(); }, [load]);
+
+  const finishMilestone = async (id, extras = {}) => {
+    const { data: r } = await api.post("/progress/complete", { milestone_id: id, ...extras });
+    toast.success(r.granted ? `+AED ${r.granted} added to your balance` : "Step marked complete");
+    load();
+  };
 
   const complete = async (id) => {
     try {
@@ -113,10 +121,17 @@ const MyProgress = () => {
           if (kyc?.url) { window.location.href = kyc.url; return; }
         } catch (e) { /* fall through to manual mark-complete */ }
       }
-      const { data: r } = await api.post("/progress/complete", { milestone_id: id });
-      toast.success(r.granted ? `+AED ${r.granted} added to your balance` : "Step marked complete");
-      load();
+      // Mobile verification — first collect a phone number, then complete.
+      if (id === "verify_mobile") { setPhoneOpen(true); return; }
+      await finishMilestone(id);
     } catch { toast.error("Could not update milestone"); }
+  };
+
+  const handlePhoneSubmit = async (phone) => {
+    try {
+      await finishMilestone("verify_mobile", { phone });
+      setPhoneOpen(false);
+    } catch { toast.error("Could not verify mobile"); }
   };
 
   if (!data) return <div className="text-zinc-500" data-testid="progress-loading">Loading progress…</div>;
@@ -229,6 +244,8 @@ const MyProgress = () => {
           </div>
         </div>
       </div>
+
+      <PhoneCaptureModal open={phoneOpen} onSubmit={handlePhoneSubmit} onClose={() => setPhoneOpen(false)} />
     </div>
   );
 };

@@ -143,6 +143,86 @@ async def send_topup_receipt(to: str, name: str, package_name: str, aed: int, us
     )
 
 
+async def send_webinar_reminder(to: str, name: str, webinar_title: str, when_str: str, join_url: str, app_url: str) -> Optional[str]:
+    body = f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0B;border:1px solid {_BORDER};border-radius:16px;">
+      <tr><td style="padding:24px;">
+        <div style="color:{_BRAND_GOLD};font-size:11px;letter-spacing:0.18em;text-transform:uppercase;">Reminder set</div>
+        <div style="color:{_TEXT};font-size:22px;font-weight:600;padding-top:10px;line-height:1.25;">{webinar_title}</div>
+        <div style="color:{_DIM};font-size:13px;padding-top:8px;">{when_str}</div>
+      </td></tr>
+      <tr><td style="padding:0 24px 24px;">
+        <a href="{join_url}" style="display:inline-block;background:{_BRAND_GOLD};color:{_BG};text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;font-size:13px;">Open event page →</a>
+      </td></tr>
+    </table>
+    """
+    return await _send(
+        to=to,
+        subject=f"Reminder · {webinar_title}",
+        html=_shell(
+            title="We'll remind you when it's live.",
+            intro=f"You're confirmed for “{webinar_title}”. We'll nudge you again 15 minutes before it starts.",
+            body_html=body,
+            cta_label="View all webinars",
+            cta_url=f"{app_url.rstrip('/')}/webinars",
+        ),
+    )
+
+
+async def send_support_inbound(user: dict, message: str, channel: str, app_url: str) -> Optional[str]:
+    """Forward user's support query directly to the OneX concierge inbox."""
+    support_to = os.environ.get("SUPPORT_INBOX", "surya@onex.exchange")
+    name = user.get("name") or user.get("email") or "Member"
+    phone = user.get("phone") or "—"
+    tier = user.get("tier") or "Cadet"
+    balance = user.get("aed_balance", 0)
+    phone_html = (f' · or call <span style="color:{_TEXT};">{phone}</span>') if phone != "—" else ""
+    body = f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0B;border:1px solid {_BORDER};border-radius:16px;">
+      <tr><td style="padding:24px;">
+        <div style="color:{_BRAND_GOLD};font-size:11px;letter-spacing:0.18em;text-transform:uppercase;">New {channel} message</div>
+        <div style="color:{_TEXT};font-size:17px;font-weight:600;padding-top:10px;">{name}</div>
+        <div style="color:{_DIM};font-size:13px;padding-top:4px;">{user.get('email','')} · {phone}</div>
+        <div style="color:{_DIM};font-size:12px;padding-top:4px;">{tier} · AED {balance:,}</div>
+      </td></tr>
+      <tr><td style="padding:0 24px 8px;">
+        <div style="color:{_BRAND_GOLD};font-size:11px;letter-spacing:0.18em;text-transform:uppercase;padding-bottom:8px;">Their message</div>
+        <div style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:14px;padding:16px;color:{_TEXT};font-size:14px;line-height:1.6;white-space:pre-wrap;">{message}</div>
+      </td></tr>
+      <tr><td style="padding:16px 24px 24px;color:{_DIM};font-size:12px;">
+        Reply directly to <a href="mailto:{user.get('email','')}" style="color:{_BRAND_GOLD};text-decoration:none;">{user.get('email','')}</a>{phone_html}
+      </td></tr>
+    </table>
+    """
+    html = _shell(
+        title=f"New support note from {name}",
+        intro=f"A OneX Club member just sent a message via the {channel} channel. Below is the full context — respond quickly.",
+        body_html=body,
+        cta_label="Open OneX admin",
+        cta_url=app_url,
+    )
+    # Reply-to header so admin can just hit Reply.
+    if not _configure_once():
+        log.warning("RESEND_API_KEY not set — skipping support inbound email")
+        return None
+    sender = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+    params = {
+        "from": f"OneX Concierge <{sender}>",
+        "to": [support_to],
+        "subject": f"[OneX Support] {name} · {message[:60]}",
+        "html": html,
+        "reply_to": [user.get("email")] if user.get("email") else [],
+    }
+    try:
+        resp = await asyncio.to_thread(resend.Emails.send, params)
+        email_id = resp.get("id") if isinstance(resp, dict) else None
+        log.info("support email sent id=%s to=%s", email_id, support_to)
+        return email_id
+    except Exception as e:  # noqa: BLE001
+        log.exception("resend support send failed: %s", e)
+        return None
+
+
 async def send_milestone_done(to: str, name: str, milestone_title: str, granted_aed: int, new_balance: int, app_url: str) -> Optional[str]:
     body = f"""
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0B;border:1px solid {_BORDER};border-radius:16px;">

@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 2 QA — verified all 5 enhancements. Backend: 38/38 pytest pass (1 skipped logout). New tests added for real leaderboard aggregates, Luma URL/is_live, /webinars/remind, phone-required verify_mobile, support email forwarding, settings phone persistence. Frontend: Leaderboard redesign + Luma register modal + Remind Me toast + Phone capture modal all working end-to-end with correct testids and prefilled email/href.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Sidebar AED balance", "issue": "Stale balance after milestone completion — DB and toast show new value (AED 310) but sidebar footer still shows AED 285 until full page reload. Minor UX issue, likely needs an auth/me refetch after POST /progress/complete success.", "selector": "sidebar AED footer", "priority": "LOW"},
+      {"component": "LumaRegisterModal", "issue": "ESC key does not dismiss the modal (only the X button does). Minor UX nicety.", "selector": "[data-testid='luma-modal']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_assertions": [
+    "GET /api/leaderboard?period={weekly|monthly|all_time}: period field matches, me.balance is real int from activity_log, podium has 3 entries.",
+    "POST /api/webinars/register returns luma_url=https://luma.com/dveb7fpt and already=true on 2nd call.",
+    "POST /api/webinars/remind returns 400 for non-registered (unknown id) and 200 after register; backend logs show 'email sent ... subject=Reminder · ...'.",
+    "GET /api/webinars?tab=upcoming items have luma_url, is_live (False for all seed dates in 2026-03+), and registered booleans.",
+    "POST /api/progress/complete milestone_id=verify_mobile WITHOUT phone returns 400 phone required; WITH phone returns 200 and persists user.phone (verified via GET /api/auth/me).",
+    "POST /api/support/contact returns {ok:true, message: '... concierge ...'}; backend logs show 'support email sent ... to=surya@onex.exchange'.",
+    "PUT /api/settings with {settings, phone} persists user.phone (verified via GET /api/settings).",
+    "Frontend /leaderboard: testids leaderboard-page, my-rank-card, leaderboard-podium (3 cards), leaderboard-list all present; gold 'OneX Champions' headline visible; full ranked list #4-#17 with progress bars.",
+    "Frontend /webinars: clicking Register on unregistered webinar opens [data-testid=luma-modal] with prefilled email hello@onex.finance, 'Confirm on Luma' anchor href=https://luma.com/dveb7fpt?email=hello%40onex.finance target=_blank, 'View Full' button present; X button closes modal.",
+    "Frontend /webinars: registered webinars show [data-testid=webinar-remind-<id>] with text 'Registered · Remind Me'; clicking it shows toast 'Reminder set — we'll email you before it starts.'",
+    "Frontend /progress: clicking Mark Complete on verify_mobile opens [data-testid=phone-modal] with 'Verify your mobile' title; submitting phone awards +AED 25 (toast shown), milestone moves to COMPLETED, DB phone persisted."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: refetch /api/auth/me after POST /api/progress/complete so the sidebar AED balance and tier reflect the new value without a full page reload.",
+    "Optional: bind ESC to close LumaRegisterModal for keyboard accessibility."
+  ],
+  "critical_code_review_comments": [
+    "server.py has grown to ~1635 lines — strongly recommend splitting into routers (auth, dashboard, progress, webinars, properties, social, support, settings, payments).",
+    "send_support_inbound and send_webinar_reminder are best-effort background tasks; consider a retry queue + dead-letter logging so silent SMTP failures don't disappear.",
+    "verify_mobile branch in /progress/complete strips phone but does no format validation — accept anything >= 4 chars. Consider phonenumbers lib or at least a regex.",
+    "_webinar_is_live recomputes window per request — fine at seed scale.",
+    "Frontend sidebar uses cached user context; milestone completion does not invalidate it. Add a refresh hook on success."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (38/38 pass, 1 skipped)", "frontend": "100% — all 5 enhancements verified end-to-end"},
+  "test_credentials": "Bearer test_2a912b090cba495aa681e8794bacb6fb (user_qa_1781303183733 / hello@onex.finance, tier Cadet). Used both as Authorization header (pytest) and session_token cookie (Playwright).",
+  "seed_data_creation": "During testing I (a) registered the test user for wb_yield_strategies / wb_palm_villa_briefing then deleted the wb_palm_villa_briefing registration to test the Register→Luma modal flow; (b) reset milestone_completions for verify_mobile and unset user.phone to retest the phone-modal flow. After tests: balance=AED 310, phone=+971501112222, verify_mobile=completed, wb_palm_villa_briefing & wb_yield_strategies & wb_dubai_airbnb_master all registered.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Re-run with TEST_SESSION_TOKEN=test_2a912b090cba495aa681e8794bacb6fb. New backend tests live in TestLeaderboardRealAggregates, TestWebinarLumaAndLive, TestWebinarRemind, TestProgressVerifyMobilePhone, TestSupportContactEmail, TestSettingsPhoneUpdate classes in /app/backend/tests/backend_test.py. Note: TestProgressVerifyMobilePhone::test_verify_mobile_without_phone_returns_400 self-skips if milestone is already completed in seed — to exercise it, run mongosh: db.user_milestones.updateOne({user_id:'user_qa_1781303183733'},{$set:{'milestones.$[m].status':'pending'}},{arrayFilters:[{'m.id':'verify_mobile'}]}) and db.users.updateOne({user_id:'user_qa_1781303183733'},{$unset:{phone:''}}) first. Email assertions are validated via backend log greps for 'subject=Reminder ·' and 'support email sent ... to=surya@onex.exchange'.",
+  "rca of the issue": "N/A — all 5 enhancements work as specified. The two reported items are minor UX polish (stale sidebar balance refresh, ESC-to-close on Luma modal) and not regressions."
+}

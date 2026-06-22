@@ -23,9 +23,10 @@ const Settings = () => {
   const { user, refresh, logout } = useAuth();
   const [data, setData] = useState(null);
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
 
   useEffect(() => {
-    api.get("/settings").then(({ data }) => { setData(data); setName(data.user.name); });
+    api.get("/settings").then(({ data }) => { setData(data); setName(data.user.name); setPhone(data.user.phone || ""); });
   }, []);
 
   if (!data) return <div className="text-zinc-500" data-testid="settings-loading">Loading…</div>;
@@ -39,7 +40,7 @@ const Settings = () => {
   };
 
   const save = async () => {
-    try { await api.put("/settings", { settings: data.settings, name }); await refresh(); toast.success("Settings saved"); }
+    try { await api.put("/settings", { settings: data.settings, name, phone }); await refresh(); toast.success("Settings saved"); }
     catch (e) { toast.error("Could not save"); }
   };
 
@@ -78,6 +79,10 @@ const Settings = () => {
               <label className="flex flex-col gap-2 text-[12px] text-zinc-500">
                 Email
                 <input value={data.user.email} readOnly data-testid="settings-email-input" className="onex-card-soft px-4 py-3 text-white outline-none opacity-70 cursor-not-allowed" />
+              </label>
+              <label className="flex flex-col gap-2 text-[12px] text-zinc-500 md:col-span-2">
+                Mobile number
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+971 50 123 4567" data-testid="settings-phone-input" className="onex-card-soft px-4 py-3 text-white outline-none focus:border-[#FACC15]/40 transition-all" />
               </label>
             </div>
           </Section>
