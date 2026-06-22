@@ -20,11 +20,14 @@ const BenefitsLadder = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { refresh } = useAuth();
   const [data, setData] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [topupOpen, setTopupOpen] = useState(false);
   const [pollState, setPollState] = useState(null); // null | "polling" | "success" | "expired"
 
   const load = useCallback(() => api.get("/benefits-ladder").then(({ data }) => setData(data)), []);
-  useEffect(() => { load(); }, [load]);
+  const loadHistory = useCallback(() => api.get("/payments/history").then(({ data }) => setHistory(data.transactions)), []);
+  useEffect(() => { load(); loadHistory(); }, [load, loadHistory]);
 
   // Handle Stripe return — poll /api/payments/status/{session_id} until paid or expired
   useEffect(() => {
@@ -52,6 +55,7 @@ const BenefitsLadder = () => {
           toast.success(`+AED ${status.aed_credited} credited`, { description: `New balance: AED ${status.aed_balance}` });
           await refresh();
           load();
+          loadHistory();
           setSearchParams({}, { replace: true });
           return;
         }
@@ -78,7 +82,7 @@ const BenefitsLadder = () => {
     };
     poll();
     return () => { cancelled = true; };
-  }, [searchParams, setSearchParams, refresh, load]);
+  }, [searchParams, setSearchParams, refresh, load, loadHistory]);
 
   if (!data) return <div className="text-zinc-500" data-testid="ladder-loading">Loading benefits…</div>;
 
@@ -237,6 +241,34 @@ const BenefitsLadder = () => {
               <div className="flex justify-between text-zinc-300"><span className="flex items-center gap-2"><Wallet size={14} className="text-zinc-500" /> Total Used</span><span className="font-semibold">AED {data.total_used}</span></div>
               <div className="flex justify-between text-zinc-300"><span className="flex items-center gap-2"><History size={14} className="text-zinc-500" /> Expires On</span><span className="font-semibold">Never</span></div>
             </div>
+
+            {history.length > 0 && (
+              <div className="mt-5 pt-5 border-t border-[#27272A]" data-testid="ladder-recent-topups">
+                <div className="flex items-center justify-between">
+                  <div className="text-[12px] uppercase tracking-[0.15em] text-zinc-500">Recent Top-Ups</div>
+                  <button onClick={() => setShowHistory((v) => !v)} data-testid="ladder-toggle-topups" className="text-[12px] text-[#FACC15] hover:underline">
+                    {showHistory ? "Hide" : `View ${history.length}`}
+                  </button>
+                </div>
+                {showHistory && (
+                  <div className="mt-3 space-y-2 fade-in">
+                    {history.slice(0, 5).map((t) => (
+                      <div key={t.session_id} className="flex items-center justify-between text-[13px] onex-card-soft p-3" data-testid={`topup-row-${t.session_id}`}>
+                        <div>
+                          <div className="text-white font-medium">{t.package_name}</div>
+                          <div className="text-zinc-500 text-[11px]">{new Date(t.credited_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[#FACC15] font-semibold">+AED {t.aed_amount.toLocaleString()}</div>
+                          <div className="text-zinc-500 text-[11px]">${t.amount_usd.toFixed(2)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <button onClick={() => navigate("/progress")} className="mt-5 w-full btn-ghost" data-testid="ladder-view-history-btn">View History <ArrowRight size={14} /></button>
           </div>
 

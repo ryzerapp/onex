@@ -24,10 +24,12 @@ from emergentintegrations.payments.stripe.checkout import (
     CheckoutStatusResponse,
     StripeCheckout,
 )
-from fastapi import APIRouter, Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
+
+from email_service import send_milestone_done, send_topup_receipt, send_welcome
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -324,7 +326,7 @@ async def ensure_user_milestones(user_id: str):
 
 
 @api.post("/auth/session")
-async def auth_session(payload: SessionExchange, response: Response):
+async def auth_session(payload: SessionExchange, request: Request, response: Response, background: BackgroundTasks):
     async with httpx.AsyncClient(timeout=15) as http:
         r = await http.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": payload.session_id})
     if r.status_code != 200:
@@ -336,7 +338,8 @@ async def auth_session(payload: SessionExchange, response: Response):
     session_token = data["session_token"]
 
     user = await db.users.find_one({"email": email}, {"_id": 0})
-    if not user:
+    is_new_user = user is None
+    if is_new_user:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         user_doc = {
             "user_id": user_id,
@@ -366,6 +369,10 @@ async def auth_session(payload: SessionExchange, response: Response):
         "expires_at": expires_at,
         "created_at": datetime.now(timezone.utc),
     })
+
+    if is_new_user:
+        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        background.add_task(send_welcome, user["email"], user["name"], origin)
 
     response.set_cookie(
         key="session_token",
@@ -412,6 +419,15 @@ async def dashboard(user: CurrentUser):
     webinars_attended = await db.webinar_registrations.count_documents({"user_id": user["user_id"], "attended": True})
     friends_invited = await db.referrals.count_documents({"referrer_id": user["user_id"]})
 
+    # Real 7-day AED earnings from the activity_log.
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    week_pipeline = [
+        {"$match": {"user_id": user["user_id"], "created_at": {"$gte": seven_days_ago}}},
+        {"$group": {"_id": None, "total": {"$sum": "$reward"}}},
+    ]
+    week_agg = await db.activity_log.aggregate(week_pipeline).to_list(1)
+    balance_this_week = int(week_agg[0]["total"]) if week_agg else 0
+
     recent_activity = await db.activity_log.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(8)
 
     lb_rank = await _user_rank(user["user_id"])
@@ -431,7 +447,7 @@ async def dashboard(user: CurrentUser):
         "next_webinar": next_webinar,
         "stats": {
             "aed_balance": user["aed_balance"],
-            "balance_this_week": 35,
+            "balance_this_week": balance_this_week,
             "waitlist_count": waitlist_count,
             "interests_count": interests_count,
             "interests_total": 5,
@@ -472,7 +488,7 @@ class MilestoneAction(BaseModel):
 
 
 @api.post("/progress/complete")
-async def complete_milestone(payload: MilestoneAction, user: CurrentUser):
+async def complete_milestone(payload: MilestoneAction, request: Request, background: BackgroundTasks, user: CurrentUser):
     ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]})
     if not ms_doc:
         raise HTTPException(status_code=404, detail="Milestones not found")
@@ -507,6 +523,17 @@ async def complete_milestone(payload: MilestoneAction, user: CurrentUser):
             "milestone",
             f"Completed: {MILESTONE_TITLE.get(payload.milestone_id, payload.milestone_id)}",
             granted,
+        )
+        fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        background.add_task(
+            send_milestone_done,
+            user["email"],
+            user["name"],
+            MILESTONE_TITLE.get(payload.milestone_id, payload.milestone_id),
+            granted,
+            fresh_user["aed_balance"],
+            origin,
         )
 
     # Return the freshly computed next_reward so the UI can re-render without an extra round-trip.
@@ -963,6 +990,29 @@ async def list_packages(user: CurrentUser):
     return {"packages": list(AED_PACKAGES.values())}
 
 
+@api.get("/payments/history")
+async def payment_history(user: CurrentUser, limit: int = 10):
+    rows = await db.payment_transactions.find(
+        {"user_id": user["user_id"], "credited": True},
+        {"_id": 0},
+    ).sort("credited_at", -1).to_list(max(1, min(limit, 50)))
+    return {
+        "transactions": [
+            {
+                "id": r.get("id"),
+                "session_id": r["session_id"],
+                "package_id": r.get("package_id"),
+                "package_name": AED_PACKAGES.get(r.get("package_id"), {}).get("name", r.get("package_id", "Top-up").title()),
+                "aed_amount": int(r.get("aed_amount", 0)),
+                "amount_usd": float(r.get("amount_usd", 0)),
+                "currency": r.get("currency", "usd"),
+                "credited_at": r.get("credited_at") or r.get("updated_at") or r.get("created_at"),
+            }
+            for r in rows
+        ]
+    }
+
+
 @api.post("/payments/checkout")
 async def create_checkout(payload: CheckoutPayload, request: Request, user: CurrentUser):
     pkg = AED_PACKAGES.get(payload.package_id)
@@ -1014,7 +1064,7 @@ async def create_checkout(payload: CheckoutPayload, request: Request, user: Curr
     return {"url": session.url, "session_id": session.session_id, "package": pkg}
 
 
-async def _credit_payment(tx: dict) -> dict:
+async def _credit_payment(tx: dict, origin: Optional[str] = None) -> dict:
     """Idempotent — credits AED only if not already credited."""
     if tx.get("credited"):
         return tx
@@ -1031,6 +1081,25 @@ async def _credit_payment(tx: dict) -> dict:
         {"$set": {"credited": True, "credited_at": _now()}},
     )
     tx["credited"] = True
+
+    # Best-effort receipt email (never raises on the caller).
+    try:
+        # `grant_aed` above already wrote the new balance — fetch fresh.
+        user = await db.users.find_one({"user_id": tx["user_id"]}, {"_id": 0})
+        if user and user.get("email"):
+            pkg = AED_PACKAGES.get(tx["package_id"], {"name": tx["package_id"].title()})
+            await send_topup_receipt(
+                to=user["email"],
+                name=user.get("name") or user["email"],
+                package_name=pkg["name"],
+                aed=aed,
+                usd=float(tx.get("amount_usd", 0)),
+                new_balance=user["aed_balance"],
+                tier=user.get("tier", "Cadet"),
+                app_url=origin or "https://onex.club",
+            )
+    except Exception as e:  # noqa: BLE001
+        log.warning("topup receipt email failed: %s", e)
     return tx
 
 
@@ -1058,7 +1127,8 @@ async def checkout_status(session_id: str, request: Request, user: CurrentUser):
 
     if status.payment_status == "paid":
         tx = await db.payment_transactions.find_one({"_id": tx["_id"]})
-        await _credit_payment(tx)
+        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        await _credit_payment(tx, origin=origin)
 
     fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {
@@ -1092,7 +1162,8 @@ async def stripe_webhook(request: Request):
                 {"$set": {"status": "complete", "payment_status": "paid", "updated_at": _now()}},
             )
             tx = await db.payment_transactions.find_one({"_id": tx["_id"]})
-            await _credit_payment(tx)
+            origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+            await _credit_payment(tx, origin=origin)
     return {"ok": True}
 
 
