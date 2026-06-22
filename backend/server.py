@@ -1421,9 +1421,10 @@ async def waitlist_diag():
 async def activity_feed(user: CurrentUser, limit: int = 50):
     """Personal action history — every AED grant, milestone, referral, webinar, top-up.
     Surfaced on the dashboard so the user always knows what they did + when."""
+    clamped = max(1, min(limit, 100))
     items = await db.activity_log.find(
         {"user_id": user["user_id"]}, {"_id": 0}
-    ).sort("created_at", -1).limit(max(1, min(limit, 100))).to_list(limit)
+    ).sort("created_at", -1).limit(clamped).to_list(clamped)
     total_earned = sum(int(a.get("reward", 0) or 0) for a in items if a.get("reward"))
     return {
         "items": items,

@@ -109,18 +109,26 @@ currency surface. Personalization based on user stage at all times.
 - **Invite & Earn — Capture emails on your Framer site**: new section with two big cards (copy referral URL, copy paste-ready HTML+JS snippet), "What happens on submit" explainer, and a new **Waitlist tab** in the pipeline filter.
 - **Resend rate-limit retry**: `_send()` now retries up to 3× with 0/0.4/1.2s backoff on 429/rate-limit errors — survives Framer-driven traffic bursts without dropping welcome emails.
 
+## What's implemented (2026-06-22 — tier rename + activity surface + bulletproof email logo)
+- **Canonical 4-tier ladder**: Member (500) → Insider (2500) → Co-Owner (5000) → Pro-Owner (10000). One-shot startup migration in `seed_data()` renames legacy strings (Cadet/Partner/Inner Circle/Founder) across `users`, `leaderboard_seed`, `co_owner_benefits`, then recomputes every user's tier + every benefit's `unlock_tier` from balance/threshold using `compute_tier`.
+- **Activity page**: new `/activity` route + `Activity.js` page rendering the full `GET /api/activity?limit=100` feed (icon-coded by kind, AED-earned summary widget, empty-state with CTA). Dashboard's "View All" link now navigates here.
+- **Tier-detail modal fix**: `LevelDetailModal` `TIER_DETAILS` re-keyed to Member/Insider/Co-Owner/Pro-Owner so clicks on Benefits Ladder + Co-Owner Benefits tier cards open with the right content (root cause was key mismatch with the old labels `Co-Owner Member` / `Priority Co-Owner` / `Co-Owner Circle` / `Elite Co-Owner`).
+- **Bulletproof email brand mark**: replaced `<img src="https://www.onexassets.com/brand/onex-circle.png">` in `email_service._shell()` with a CSS-rendered "1X" lime-green circle (no external image, no proxy blocking, renders in every email client including Gmail dark mode).
+- **Sidebar/MobileDrawer**: fallback tier label changed from "Cadet" → "Member".
+
 ## Backlog (P1)
-- Sora-2-style hero videos on Co-Owner Benefits.
-- Email verification capture for shared referral signups.
+- India region segment: AED/INR switch, 0.1g pure 999 gold-coin SIP (15-day), Razorpay/UPI, Goa tokenized real estate flow, OneX Wealth Club shipping kit.
+- Stripe LIVE (currently DUMMY); production checkout + webhook receipts.
+- BIMI DNS setup (Brand Indicators for Message Identification) — Gmail avatar trust mark (out-of-code, user-facing setup task).
 - Saved Properties dedicated view.
-- Deep visual redesign of Co-Owner Benefits page (modal already wired).
+- Sora-2-style hero videos on Co-Owner Benefits.
 
 ## Backlog (P2)
-- Stripe LIVE (currently DUMMY); webhook + receipts wired.
+- Split `server.py` (>2100 lines) into routers: auth, dashboard, progress, webinars, properties, social, support, settings, payments, tiers, benefits, activity.
 - Live chat with WebSocket on Support Center.
 - Push notifications via FCM/OneSignal.
-- Split server.py into routers (auth/dashboard/progress/webinars/properties/social/support/settings/payments).
+- React hook missing-deps lint warnings cleanup.
 
 ## Next steps
 - Decide when to switch Stripe from DUMMY to LIVE.
-- Optionally polish: ESC accessibility everywhere, phonenumbers validation, refresh queue for support emails.
+- Begin India region (P1) — gather Razorpay test keys + India onboarding spec.
