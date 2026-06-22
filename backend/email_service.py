@@ -80,6 +80,43 @@ async def _send(to: str, subject: str, html: str, name: Optional[str] = None,
 
 
 # -------------------- Template helpers --------------------
+async def send_waitlist_welcome(to: str, name: str, referrer_name: Optional[str], app_url: str) -> Optional[str]:
+    """Inbox-friendly welcome for visitors who just dropped their email on the Framer landing.
+
+    Subject deliberately omits any "+AED N" prefix — these visitors aren't full members yet
+    and the inbox preview must read like a clean welcome, not a transactional receipt.
+    """
+    first = name.split(" ")[0] if name else "there"
+    invited_line = (
+        f"<span style='color:{_TEXT};'>{referrer_name}</span> invited you to join "
+        if referrer_name else ""
+    )
+    body = f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0B;border:1px solid {_BORDER};border-radius:16px;">
+      <tr><td style="padding:24px;">
+        <div style="color:{_BRAND_GOLD};font-size:11px;letter-spacing:0.18em;text-transform:uppercase;">Waitlist confirmed</div>
+        <div style="color:{_TEXT};font-size:20px;font-weight:600;padding-top:10px;line-height:1.25;">You're on the OneX Club waitlist, {first}.</div>
+        <div style="color:{_DIM};font-size:13px;padding-top:10px;line-height:1.7;">
+          {invited_line}Dubai's invitation-only co-ownership circle. We'll email you the moment your
+          allocation window opens — typically within 7 days of joining.
+        </div>
+      </td></tr>
+    </table>
+    """
+    return await _send(
+        to=to,
+        subject="You're on the OneX Club waitlist",
+        html=_shell(
+            title=f"Welcome, {first}.",
+            intro="Priority access to Dubai's most exclusive properties just started. Five flagship launches. Curated by OneX. Reserved for members.",
+            body_html=body,
+            cta_label="Explore OneX Club",
+            cta_url=app_url,
+        ),
+        name=name,
+    )
+
+
 async def send_welcome(to: str, name: str, app_url: str) -> Optional[str]:
     body = f"""
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0B;border:1px solid {_BORDER};border-radius:16px;">

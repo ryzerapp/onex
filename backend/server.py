@@ -35,7 +35,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
-from email_service import send_milestone_done, send_topup_receipt, send_welcome, send_webinar_reminder, send_support_inbound
+from email_service import send_milestone_done, send_topup_receipt, send_welcome, send_webinar_reminder, send_support_inbound, send_waitlist_welcome
 from brevo_client import upsert_contact as brevo_upsert_contact
 
 ROOT_DIR = Path(__file__).parent
@@ -1305,9 +1305,9 @@ async def waitlist_join(payload: WaitlistJoin, request: Request, background: Bac
     )
     # Welcome email to the new signup.
     background.add_task(
-        send_milestone_done,
+        send_waitlist_welcome,
         email, name,
-        "You're on the OneX waitlist", 0, 0,
+        referrer["name"] if referrer else None,
         origin,
     )
     # Admin notification — reuse the support-inbound helper for a consistent format.
