@@ -23,6 +23,8 @@ const config: CapacitorConfig = {
   ios: {
     contentInset: "always",
     backgroundColor: "#0A0A0B",
+    // Required because the app loads /api/* from REACT_APP_BACKEND_URL (a different
+    // domain than the bundled web shell). Do NOT tighten this without updating CORS.
     limitsNavigationsToAppBoundDomains: false,
   },
   android: {

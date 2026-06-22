@@ -39,7 +39,8 @@ export const navGroups = [
   },
 ];
 
-/** Bottom-nav (mobile) — five most-used tabs. */
+/** Bottom-nav (mobile) — five most-used tabs. The 5th slot ("More") is rendered
+ *  by BottomNav.js itself (it opens the drawer rather than navigating to a route). */
 export const bottomNavItems = [
   { to: "/dashboard", icon: Home, name: "Home", testId: "bottom-nav-dashboard" },
   { to: "/properties", icon: Building2, name: "Properties", testId: "bottom-nav-properties" },

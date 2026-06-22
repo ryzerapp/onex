@@ -55,6 +55,14 @@ currency surface. Personalization based on user stage at all times.
 - **Invite & Earn page redesign**: link card, four share buttons that actually open share URLs (WhatsApp/Telegram/LinkedIn/Email), 6-stat grid (Clicks/Signups/Pending/Verified/KYC/AED), Referral Pipeline section with 4 tabs (Signups/Pending/Expired/All), table of all referees + anonymous click visitors with status pills, and a friendly empty state.
 - **Critical bug fix (during testing)**: ObjectId leak in `/api/auth/email/verify` and `/api/auth/google/callback` for NEW users — `insert_one` was mutating the dict with `_id`, breaking JSON encoding (500 errors). Fixed with `user_doc.pop('_id', None)`. Referral signup flow now works end-to-end.
 
+## What's implemented (2026-02-22 — Phase A mobile conversion)
+- **Mobile-responsive shell**: sticky `MobileTopBar` (brand + AED pill + hamburger), slide-in `MobileDrawer` (profile, AED card, all 12 routes, sign-out — closes on route change / ESC / backdrop tap), fixed `BottomNav` with 5 tabs (Home / Properties / Events / Invite / More) and a gold active indicator.
+- **Single nav source of truth**: `components/layout/navItems.js` shared by Sidebar, MobileDrawer and BottomNav.
+- **Safe-area + zero overflow**: `viewport-fit=cover`, `env(safe-area-inset-*)` on top bar / drawer / bottom nav, `overflow-x:hidden` and `.mobile-safe-bottom` clearance. Zero horizontal overflow at 375px on **all 12 pages** (verified).
+- **Touch-target sizing**: `.btn-gold` / `.btn-ghost` ≥44px on mobile, larger pill paddings, `-webkit-tap-highlight-color: transparent`.
+- **Capacitor 7 wrapper**: `capacitor.config.ts` (appId `club.onex.app`, webDir `build`), `src/native.js` boots StatusBar/SplashScreen/Android-back, `package.json` cap:* scripts (`cap:add:ios`, `cap:add:android`, `cap:sync`, `cap:open:ios`, `cap:open:android`, `cap:run:*`).
+- **`MOBILE_BUILD.md`**: full iOS + Android shipping playbook (Xcode signing, Play Console .aab, icon/splash generation, troubleshooting).
+
 ## Backlog (P1)
 - Sora-2-style hero videos on Co-Owner Benefits.
 - Email verification capture for shared referral signups.
