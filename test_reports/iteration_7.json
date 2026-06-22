@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 7 — Brevo migration verification (Resend → Brevo). 18/18 backend pytest cases PASS. Live Brevo API confirmed for waitlist contact upsert (list=6), waitlist welcome email, OTP magic-link email, admin support notification, and idempotent re-submission. Mocked respx assertions cover payload shape (NAME/FIRSTNAME/LASTNAME/REF_CODE/TIER/AED_BALANCE/SOURCE + listIds=[6] + updateEnabled=true), sender wiring (hello@onexassets.com / OneX Club), replyTo routing, 429 triple-retry, and no-retry on 400. Frontend /dashboard renders cleanly at 1920x900 and 390x844 with 0 console errors for the Surya session. Mobile bottom nav (Home/Properties/Events/Invite/More) confirmed in screenshot.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_assertions": [
+    "import brevo_client + from email_service import _send both succeed at module load.",
+    "grep -rn 'import resend|from resend' /app/backend → ZERO matches.",
+    "requirements.txt no longer contains 'resend' (only httpx, already a dep). pip show resend → not installed.",
+    "backend/.env: BREVO_API_KEY=xkeysib-..., BREVO_CONTACT_LIST_ID=6, BREVO_SENDER_EMAIL=hello@onexassets.com, BREVO_SENDER_NAME=OneX Club, SUPPORT_INBOX=surya@onexassets.com, SENDER_EMAIL=hello@onexassets.com, PUBLIC_APP_URL=https://www.onexassets.com. RESEND_API_KEY removed.",
+    "POST /api/waitlist/join with fresh unique email + ref=surya-378738 → 200 {ok:true, already:false, referrer_name:'Surya'}. Backend logs (live evidence captured): 'brevo contact upserted id=5 email=brevo-it7-wl-… list=6' AND 'brevo email sent … subject=+AED 0 — You\\'re on the OneX waitlist done attempt=1' AND admin notification 'brevo email sent … to=surya@onexassets.com subject=[OneX Support] …'.",
+    "Repeated POST /waitlist/join with the SAME email → 200 {ok:true, already:true}. No second 'You\\'re on the OneX waitlist' welcome was fired for the second call (verified by log scan — only one such line per fresh email). Idempotent at DB level as specified.",
+    "POST /api/auth/email/start → 200 {ok:true}; log: 'brevo email sent … subject=Your OneX Club sign-in code attempt=1'.",
+    "respx-mocked POST https://api.brevo.com/v3/contacts payload verified: email lowercased; updateEnabled=true; listIds=[6]; attributes={NAME:'Jane Doe', FIRSTNAME:'Jane', LASTNAME:'Doe', REF_CODE:'surya-378738', TIER:'Cadet', AED_BALANCE:250, SOURCE:'framer'}; api-key header xkeysib-…",
+    "respx-mocked POST /v3/smtp/email payload: sender.email='hello@onexassets.com', sender.name='OneX Club'; replyTo.email=<member>, replyTo.name=<member name>; subject starts with '[OneX Support]'.",
+    "/api/support/contact → 200, support_inbound sent to surya@onexassets.com with subject '[OneX Support] Surya · Iteration-7 brevo smoke from QA' (live log confirms).",
+    "Retry: brevo_client.send_email returns messageId after [429,429,201] sequence (3 attempts). On 400, only 1 attempt is made (no retry on non-429 non-2xx). Both verified via respx.",
+    "Backend regression: /api/dashboard 200, /api/referrals 200, /api/progress total=12 milestones 200, /api/webinars 200.",
+    "Frontend /dashboard 1920x900 (logged in as Surya): renders 'Welcome back, Surya!', AED 730 balance, 7/12 milestones, Quick Actions. Zero api/network console errors.",
+    "Frontend /dashboard 390x844 mobile: renders correctly, bottom nav visible (Home/Properties/Events/Invite/More). Zero console errors.",
+    "Email shell now uses https://www.onexassets.com/brand/onex-circle.png as brand mark (replacing inline 1X text)."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_brevo_migration.py",
+    "/app/test_reports/pytest/iteration7_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 2064 lines — repeated reminder from iteration 6: split waitlist + referrals + progress + brevo wiring into routers when convenient.",
+    "brevo_client.send_email retries on httpx exceptions too (not just 429). Spec says 'On other non-2xx statuses it does NOT retry' which the code respects, but transient network exceptions (e.g. ConnectError) now retry up to 3 times. This is arguably correct/better, but worth documenting so future testers don't flag it.",
+    "auth_email_verify imports email_service._send + _shell inside the function body (line 671). Acceptable for hot-path tree-shaking but better as a top-level import for clarity.",
+    "Waitlist visitor welcome currently uses send_milestone_done with granted=0 / new_balance=0 — semantically odd (the subject reads '+AED 0 — You\\'re on the OneX waitlist done'). Consider a dedicated send_waitlist_welcome template so the inbox subject doesn't say '+AED 0 … done'.",
+    "Admin notification body says 'referred by Surya (hello@onex.finance)' — the referrer's email is leaked into the admin inbox. Fine for internal ops, but if SUPPORT_INBOX is ever shared with vendors, sanitize."
+  ],
+  "updated_files": ["/app/backend/tests/test_brevo_migration.py"],
+  "success_rate": {"backend": "100% (18/18 pytest)", "frontend": "100% (desktop + mobile dashboard render, 0 console errors)"},
+  "test_credentials": "session_token=test_2a912b090cba495aa681e8794bacb6fb (Surya, hello@onex.finance, referral_code=surya-378738).",
+  "seed_data_creation": "Live Brevo contacts created in list=6 during test run: brevo-it7-wl-a534febecd@onexassets.com (id=5), brevo-it7-wl-4dab0337ae@onexassets.com (id=6), and one brevo-it7-otp-* OTP recipient. Also ~3 transient waitlist_signups rows attributed to Surya. User may clean up via Brevo dashboard if desired.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite at /app/backend/tests/test_brevo_migration.py — run with `pytest backend/tests/test_brevo_migration.py -v`. Loads /app/backend/.env at top of test for live BREVO_API_KEY access. Live tests hit Brevo's real /v3/contacts and /v3/smtp/email endpoints — each run will create one new contact in list=6 and ~5 outbound emails. respx-based mock tests cover payload shape + retry logic without burning quota. The iteration_6 file's `test_waitlist_and_progress.py` suite is still valid and orthogonal — both can be run together.",
+  "rca of the issue": "Initial 5 failures (env_brevo_configured + 4 respx tests) had identical RCA: pytest doesn't auto-load backend/.env, so os.environ.get('BREVO_API_KEY') was empty and brevo_client.send_email/upsert_contact early-returned None with 'BREVO_API_KEY not set' warning before reaching the mocked endpoint. Fix: added `load_dotenv(/app/backend/.env)` at the top of the test file. All 18 tests then PASS. No production code changes required."
+}

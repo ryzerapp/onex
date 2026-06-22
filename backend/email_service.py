@@ -1,17 +1,17 @@
-"""Resend transactional emails.
+"""Transactional email helpers — delivered via Brevo.
 
-All sends run inside ``asyncio.to_thread`` so we never block the FastAPI event loop.
-Send failures are logged but never raise — emails are best-effort, never a
-hard dependency of a transactional flow.
+Function signatures (`send_welcome`, `send_milestone_done`, `send_topup_receipt`,
+`send_webinar_reminder`, `send_support_inbound`) are preserved for backward
+compatibility with the rest of the codebase. Internally they all route through
+`brevo_client.send_email`. Sends are best-effort: failures log but never raise.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from typing import Optional
 
-import resend
+from brevo_client import send_email as _brevo_send
 
 log = logging.getLogger("onex.email")
 
@@ -24,11 +24,8 @@ _DIM = "#A1A1AA"
 
 
 def _configure_once() -> bool:
-    key = os.environ.get("RESEND_API_KEY")
-    if not key:
-        return False
-    resend.api_key = key
-    return True
+    # Kept for API parity. Real config now lives in brevo_client._api_key().
+    return bool(os.environ.get("BREVO_API_KEY"))
 
 
 def _shell(title: str, intro: str, body_html: str, cta_label: Optional[str] = None, cta_url: Optional[str] = None) -> str:
@@ -46,7 +43,9 @@ def _shell(title: str, intro: str, body_html: str, cta_label: Optional[str] = No
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:24px;overflow:hidden;">
         <tr><td style="padding:32px 32px 16px;">
           <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="background:{_BRAND_GOLD};width:48px;height:48px;border-radius:14px;font-weight:700;color:{_BG};text-align:center;font-size:18px;line-height:48px;">1X</td>
+            <td style="width:48px;height:48px;border-radius:50%;overflow:hidden;background:#0A0A0B;">
+              <img src="https://www.onexassets.com/brand/onex-circle.png" alt="OneX" width="48" height="48" style="display:block;width:48px;height:48px;border-radius:50%;" />
+            </td>
             <td style="padding-left:12px;">
               <div style="color:{_TEXT};font-size:16px;font-weight:600;line-height:1;">OneX <span style="color:{_BRAND_GOLD};">Club</span></div>
               <div style="color:{_DIM};font-size:10px;letter-spacing:0.2em;text-transform:uppercase;padding-top:6px;">Dubai · Assets</div>
@@ -68,31 +67,16 @@ def _shell(title: str, intro: str, body_html: str, cta_label: Optional[str] = No
 </body></html>"""
 
 
-async def _send(to: str, subject: str, html: str) -> Optional[str]:
-    if not _configure_once():
-        log.warning("RESEND_API_KEY not set — skipping email '%s'", subject)
-        return None
-    sender = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
-    params = {"from": f"OneX Club <{sender}>", "to": [to], "subject": subject, "html": html}
-    # Resend free tier caps at 5 req/sec. Retry transient rate-limit errors with a
-    # short backoff so burst signups (e.g., a Framer page going viral) don't drop emails.
-    delays = (0, 0.4, 1.2)
-    last_err: Optional[Exception] = None
-    for attempt, delay in enumerate(delays, start=1):
-        if delay:
-            await asyncio.sleep(delay)
-        try:
-            resp = await asyncio.to_thread(resend.Emails.send, params)
-            email_id = resp.get("id") if isinstance(resp, dict) else None
-            log.info("email sent id=%s to=%s subject=%s attempt=%d", email_id, to, subject, attempt)
-            return email_id
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            msg = str(e).lower()
-            if "rate" not in msg and "429" not in msg:
-                break  # not a rate-limit — don't waste retries
-    log.exception("resend send failed to=%s subject=%s after %d attempts: %s", to, subject, len(delays), last_err)
-    return None
+async def _send(to: str, subject: str, html: str, name: Optional[str] = None,
+                reply_to: Optional[str] = None) -> Optional[str]:
+    """Thin wrapper preserving the legacy `_send(to, subject, html)` signature."""
+    return await _brevo_send(
+        to_email=to,
+        to_name=name or to,
+        subject=subject,
+        html=html,
+        reply_to_email=reply_to,
+    )
 
 
 # -------------------- Template helpers --------------------
@@ -212,26 +196,15 @@ async def send_support_inbound(user: dict, message: str, channel: str, app_url: 
         cta_label="Open OneX admin",
         cta_url=app_url,
     )
-    # Reply-to header so admin can just hit Reply.
-    if not _configure_once():
-        log.warning("RESEND_API_KEY not set — skipping support inbound email")
-        return None
-    sender = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
-    params = {
-        "from": f"OneX Concierge <{sender}>",
-        "to": [support_to],
-        "subject": f"[OneX Support] {name} · {message[:60]}",
-        "html": html,
-        "reply_to": [user.get("email")] if user.get("email") else [],
-    }
-    try:
-        resp = await asyncio.to_thread(resend.Emails.send, params)
-        email_id = resp.get("id") if isinstance(resp, dict) else None
-        log.info("support email sent id=%s to=%s", email_id, support_to)
-        return email_id
-    except Exception as e:  # noqa: BLE001
-        log.exception("resend support send failed: %s", e)
-        return None
+    # Send to admin inbox with reply_to set to the member's email.
+    return await _brevo_send(
+        to_email=support_to,
+        to_name="OneX Admin",
+        subject=f"[OneX Support] {name} · {message[:60]}",
+        html=html,
+        reply_to_email=user.get("email"),
+        reply_to_name=name,
+    )
 
 
 async def send_milestone_done(to: str, name: str, milestone_title: str, granted_aed: int, new_balance: int, app_url: str) -> Optional[str]:

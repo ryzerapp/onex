@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
 from email_service import send_milestone_done, send_topup_receipt, send_welcome, send_webinar_reminder, send_support_inbound
+from brevo_client import upsert_contact as brevo_upsert_contact
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -565,6 +566,13 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
                 )
         origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
         background.add_task(send_welcome, user["email"], user["name"], origin)
+        # CRM: sync new Google signup into Brevo list.
+        background.add_task(
+            brevo_upsert_contact,
+            email=user["email"], name=user["name"], ref_code=user["referral_code"],
+            tier=user.get("tier", "Cadet"), aed_balance=user.get("aed_balance", 0),
+            source="google",
+        )
 
     response.set_cookie(
         key="session_token",
@@ -722,6 +730,13 @@ async def auth_email_verify(payload: EmailVerify, request: Request, response: Re
     if is_new_user:
         await _attribute_referral_signup(user, rec.get("ref"), origin, background, request)
         background.add_task(send_welcome, user["email"], user["name"], origin)
+        # CRM: sync new email-OTP signup into Brevo list.
+        background.add_task(
+            brevo_upsert_contact,
+            email=user["email"], name=user["name"], ref_code=user["referral_code"],
+            tier=user.get("tier", "Cadet"), aed_balance=user.get("aed_balance", 0),
+            source="email",
+        )
 
     session_token = f"email_{uuid.uuid4().hex}"
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
@@ -1280,6 +1295,14 @@ async def waitlist_join(payload: WaitlistJoin, request: Request, background: Bac
         await _mark_click_converted(ref_code, request)
 
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    # CRM: push the waitlist email into the Brevo list (highest-value action — runs first).
+    background.add_task(
+        brevo_upsert_contact,
+        email=email, name=name,
+        ref_code=(referrer["referral_code"] if referrer else None),
+        tier="Waitlist", aed_balance=0,
+        source=(payload.source or "waitlist"),
+    )
     # Welcome email to the new signup.
     background.add_task(
         send_milestone_done,
