@@ -2,6 +2,7 @@ import React from "react";
 import { Menu, Wallet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import BrandMark from "@/components/common/BrandMark";
 
 /** Sticky top bar shown on mobile (<lg). Contains brand, AED balance and the drawer trigger. */
 const MobileTopBar = ({ onOpenMenu }) => {
@@ -21,7 +22,7 @@ const MobileTopBar = ({ onOpenMenu }) => {
           data-testid="mobile-brand"
           aria-label="OneX Club home"
         >
-          <div className="w-9 h-9 rounded-xl onex-gold-fill flex items-center justify-center font-bold text-[14px] tracking-tight">1X</div>
+          <BrandMark size={36} />
           <div className="leading-none">
             <div className="text-[14px] font-semibold">
               <span className="text-white">OneX</span> <span className="onex-gold-text">Club</span>
@@ -35,10 +36,10 @@ const MobileTopBar = ({ onOpenMenu }) => {
             type="button"
             onClick={() => navigate("/benefits-ladder")}
             data-testid="mobile-aed-balance"
-            className="flex items-center gap-1.5 rounded-full bg-[#FACC15]/10 border border-[#FACC15]/30 px-3 py-1.5"
+            className="flex items-center gap-1.5 rounded-full bg-[#8CFF2E]/10 border border-[#8CFF2E]/30 px-3 py-1.5"
             aria-label="View AED balance"
           >
-            <Wallet size={12} className="text-[#FACC15]" />
+            <Wallet size={12} className="text-[#8CFF2E]" />
             <span className="text-[12px] font-semibold text-white tabular-nums">{user?.aed_balance ?? 0}</span>
           </button>
 

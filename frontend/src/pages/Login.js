@@ -4,6 +4,7 @@ import { api } from "@/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { ArrowRight, Mail, KeyRound, Loader2 } from "lucide-react";
+import BrandMark from "@/components/common/BrandMark";
 
 // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 const Login = () => {
@@ -59,7 +60,7 @@ const Login = () => {
       <div className="flex-1 flex items-center justify-center px-6 py-10 lg:px-16">
         <div className="w-full max-w-md fade-in-up">
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
+            <BrandMark size={48} glow />
             <div>
               <div className="text-[18px] font-semibold leading-none"><span className="text-white">OneX</span> <span className="onex-gold-text">Club</span></div>
               <div className="text-[10px] tracking-[0.2em] text-zinc-500 mt-1.5 uppercase">Dubai · Assets</div>
@@ -94,7 +95,7 @@ const Login = () => {
                 required
                 placeholder="you@example.com"
                 data-testid="login-email-input"
-                className="w-full onex-card-soft px-4 py-3.5 text-white outline-none focus:border-[#FACC15]/40"
+                className="w-full onex-card-soft px-4 py-3.5 text-white outline-none focus:border-[#8CFF2E]/40"
               />
               <button type="submit" disabled={busy} data-testid="login-email-send-btn" className="w-full btn-gold !py-4 text-[15px]">
                 {busy ? <><Loader2 size={16} className="animate-spin" /> Sending…</> : <>Send 6-digit code <ArrowRight size={16} /></>}
@@ -114,7 +115,7 @@ const Login = () => {
                 required
                 placeholder="123456"
                 data-testid="login-otp-input"
-                className="w-full onex-card-soft px-4 py-3.5 text-white outline-none focus:border-[#FACC15]/40 text-center text-[22px] tracking-[0.4em] font-mono"
+                className="w-full onex-card-soft px-4 py-3.5 text-white outline-none focus:border-[#8CFF2E]/40 text-center text-[22px] tracking-[0.4em] font-mono"
               />
               <button type="submit" disabled={busy || otp.length !== 6} data-testid="login-otp-verify-btn" className="w-full btn-gold !py-4 text-[15px]">
                 {busy ? <><Loader2 size={16} className="animate-spin" /> Verifying…</> : <><KeyRound size={16} /> Verify & sign in</>}

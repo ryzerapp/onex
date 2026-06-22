@@ -30,7 +30,7 @@ const LumaRegisterModal = ({ open, webinar, userEmail, onConfirm, onClose }) => 
       <div
         data-testid="luma-modal"
         className="relative w-full max-w-lg rounded-3xl border border-[#27272A] bg-[#0F0F12] shadow-2xl overflow-hidden"
-        style={{ boxShadow: "0 30px 90px -20px rgba(250,204,21,0.18), 0 0 0 1px rgba(250,204,21,0.06)" }}
+        style={{ boxShadow: "0 30px 90px -20px rgba(140,255,46,0.18), 0 0 0 1px rgba(140,255,46,0.06)" }}
       >
         <button
           data-testid="luma-modal-close"
@@ -58,7 +58,7 @@ const LumaRegisterModal = ({ open, webinar, userEmail, onConfirm, onClose }) => 
               <div className="mt-5 rounded-2xl border border-[#27272A] bg-[#15161A] p-4">
                 <div className="text-[11px] uppercase tracking-[0.15em] text-zinc-500">Registering with</div>
                 <div className="mt-2 flex items-center gap-2.5 text-white text-[14px]">
-                  <Mail size={14} className="text-[#FACC15]" /> {userEmail || "your account email"}
+                  <Mail size={14} className="text-[#8CFF2E]" /> {userEmail || "your account email"}
                 </div>
                 <div className="mt-3 text-[12px] text-zinc-500 leading-relaxed">
                   We'll prefill this on Luma so you can confirm in a single click. No second sign-in needed.
@@ -94,7 +94,7 @@ const LumaRegisterModal = ({ open, webinar, userEmail, onConfirm, onClose }) => 
           <div className="relative" data-testid="luma-iframe-wrap">
             <div className="flex items-center justify-between px-5 py-3 border-b border-[#27272A]">
               <button onClick={() => setShowIframe(false)} className="text-[12px] text-zinc-400 hover:text-white transition">← Back to summary</button>
-              <a href={lumaWithEmail} target="_blank" rel="noreferrer" className="text-[12px] text-[#FACC15] hover:underline flex items-center gap-1">Open on Luma <ExternalLink size={11} /></a>
+              <a href={lumaWithEmail} target="_blank" rel="noreferrer" className="text-[12px] text-[#8CFF2E] hover:underline flex items-center gap-1">Open on Luma <ExternalLink size={11} /></a>
             </div>
             <iframe
               title="Luma event"

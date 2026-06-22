@@ -25,7 +25,7 @@ const PhoneCaptureModal = ({ open, onSubmit, onClose }) => {
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-md bg-black/70 fade-in"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div data-testid="phone-modal" className="w-full max-w-md rounded-3xl border border-[#27272A] bg-[#0F0F12] p-6 relative" style={{ boxShadow: "0 30px 90px -20px rgba(250,204,21,0.16)" }}>
+      <div data-testid="phone-modal" className="w-full max-w-md rounded-3xl border border-[#27272A] bg-[#0F0F12] p-6 relative" style={{ boxShadow: "0 30px 90px -20px rgba(140,255,46,0.16)" }}>
         <button data-testid="phone-modal-close" onClick={onClose} className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 border border-white/10 flex items-center justify-center hover:bg-white/10 transition">
           <X size={16} className="text-zinc-300" />
         </button>
@@ -41,7 +41,7 @@ const PhoneCaptureModal = ({ open, onSubmit, onClose }) => {
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+971 50 123 4567"
-          className="mt-2 w-full onex-card-soft px-4 py-3 text-white text-[14px] outline-none focus:border-[#FACC15]/40 transition-all"
+          className="mt-2 w-full onex-card-soft px-4 py-3 text-white text-[14px] outline-none focus:border-[#8CFF2E]/40 transition-all"
           autoFocus
         />
 

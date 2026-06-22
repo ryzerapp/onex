@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { Wallet, ChevronRight, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { navGroups } from "@/components/layout/navItems";
+import BrandMark from "@/components/common/BrandMark";
 
 const Sidebar = () => {
   const { user, logout } = useAuth();
@@ -13,7 +14,7 @@ const Sidebar = () => {
     <aside className="hidden lg:flex flex-col fixed left-0 top-0 h-screen w-[280px] bg-[#0A0A0B] border-r border-[#1A1B1F] px-4 py-6 z-40">
       {/* Brand */}
       <div className="flex items-center gap-3 px-2 mb-2" data-testid="brand-block">
-        <div className="w-12 h-12 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl tracking-tight">1X</div>
+        <BrandMark size={48} glow />
         <div>
           <div className="text-[17px] font-semibold leading-none">
             <span className="text-white">OneX</span> <span className="onex-gold-text">Club</span>
@@ -46,11 +47,11 @@ const Sidebar = () => {
         type="button"
         onClick={() => navigate("/benefits-ladder")}
         data-testid="sidebar-aed-balance-card"
-        className="mt-4 w-full flex items-center justify-between gap-3 rounded-2xl border border-[#27272A] bg-[#15161A] hover:border-[#FACC15]/40 transition-all px-4 py-3"
+        className="mt-4 w-full flex items-center justify-between gap-3 rounded-2xl border border-[#27272A] bg-[#15161A] hover:border-[#8CFF2E]/40 transition-all px-4 py-3"
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#FACC15]/10 border border-[#FACC15]/30 flex items-center justify-center">
-            <Wallet size={16} className="text-[#FACC15]" />
+          <div className="w-9 h-9 rounded-xl bg-[#8CFF2E]/10 border border-[#8CFF2E]/30 flex items-center justify-center">
+            <Wallet size={16} className="text-[#8CFF2E]" />
           </div>
           <div className="text-left">
             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Co-Owner Credits</div>
@@ -65,13 +66,13 @@ const Sidebar = () => {
         type="button"
         onClick={() => navigate("/settings")}
         data-testid="sidebar-profile-card"
-        className="mt-3 w-full flex items-center justify-between gap-3 rounded-2xl border border-[#27272A] bg-[#15161A] hover:border-[#FACC15]/30 transition-all px-3 py-2.5"
+        className="mt-3 w-full flex items-center justify-between gap-3 rounded-2xl border border-[#27272A] bg-[#15161A] hover:border-[#8CFF2E]/30 transition-all px-3 py-2.5"
       >
         <div className="flex items-center gap-3">
           {user?.picture ? (
             <img src={user.picture} alt={user?.name} className="w-9 h-9 rounded-full object-cover" />
           ) : (
-            <div className="w-9 h-9 rounded-full bg-[#FACC15]/15 text-[#FACC15] flex items-center justify-center font-semibold text-sm">{initials}</div>
+            <div className="w-9 h-9 rounded-full bg-[#8CFF2E]/15 text-[#8CFF2E] flex items-center justify-center font-semibold text-sm">{initials}</div>
           )}
           <div className="text-left">
             <div className="text-[14px] font-medium text-white leading-tight">{user?.name?.split(" ")[0] || "Member"}</div>

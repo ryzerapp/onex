@@ -49,7 +49,7 @@ const MobileDrawer = ({ open, onClose }) => {
             {user?.picture ? (
               <img src={user.picture} alt={user?.name} className="w-11 h-11 rounded-full object-cover" />
             ) : (
-              <div className="w-11 h-11 rounded-full bg-[#FACC15]/15 text-[#FACC15] flex items-center justify-center font-semibold">{initials}</div>
+              <div className="w-11 h-11 rounded-full bg-[#8CFF2E]/15 text-[#8CFF2E] flex items-center justify-center font-semibold">{initials}</div>
             )}
             <div className="leading-tight">
               <div className="text-white text-[15px] font-medium">{user?.name || "Member"}</div>
@@ -72,11 +72,11 @@ const MobileDrawer = ({ open, onClose }) => {
           type="button"
           onClick={() => navigate("/benefits-ladder")}
           data-testid="drawer-aed-balance"
-          className="mx-4 mt-4 flex items-center justify-between gap-3 rounded-2xl border border-[#FACC15]/30 bg-[#3A2F0F]/40 hover:bg-[#3A2F0F]/60 transition-all px-4 py-3"
+          className="mx-4 mt-4 flex items-center justify-between gap-3 rounded-2xl border border-[#8CFF2E]/30 bg-[#1F3008]/40 hover:bg-[#1F3008]/60 transition-all px-4 py-3"
         >
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#FACC15]/15 border border-[#FACC15]/30 flex items-center justify-center">
-              <Wallet size={15} className="text-[#FACC15]" />
+            <div className="w-9 h-9 rounded-xl bg-[#8CFF2E]/15 border border-[#8CFF2E]/30 flex items-center justify-center">
+              <Wallet size={15} className="text-[#8CFF2E]" />
             </div>
             <div className="text-left">
               <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Co-Owner Credits</div>

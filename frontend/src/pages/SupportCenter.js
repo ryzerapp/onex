@@ -23,13 +23,13 @@ const SupportCenter = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         {[
-          { icon: MessageCircle, title: "Start Live Chat", body: "Average reply 4 min", color: "#FACC15", bg: "#3A2F0F", id: "chat" },
+          { icon: MessageCircle, title: "Start Live Chat", body: "Average reply 4 min", color: "#8CFF2E", bg: "#1F3008", id: "chat" },
           { icon: Phone, title: "Schedule a Call", body: "Book a 1:1 with a specialist", color: "#22C55E", bg: "#1F3A2D", id: "call" },
           { icon: BookOpen, title: "Browse Resources", body: "Articles, playbooks, primers", color: "#A78BFA", bg: "#2A1F4A", id: "resources" },
         ].map((c) => {
           const Icon = c.icon;
           return (
-            <button key={c.id} onClick={() => toast.message(`Concierge: ${c.title}`, { description: c.body })} className="onex-card p-6 text-left hover:-translate-y-1 hover:border-[#FACC15]/30 transition-all" data-testid={`support-action-${c.id}`}>
+            <button key={c.id} onClick={() => toast.message(`Concierge: ${c.title}`, { description: c.body })} className="onex-card p-6 text-left hover:-translate-y-1 hover:border-[#8CFF2E]/30 transition-all" data-testid={`support-action-${c.id}`}>
               <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: c.bg, border: `1px solid ${c.color}44` }}>
                 <Icon size={20} style={{ color: c.color }} />
               </div>
@@ -78,7 +78,7 @@ const SupportCenter = () => {
             />
             <button onClick={submit} className="btn-gold !py-2" data-testid="support-send-btn"><Send size={14} /></button>
           </div>
-          <div className="mt-4 onex-card-soft p-3 text-[12px] text-zinc-400 flex items-center gap-2"><Sparkles size={12} className="text-[#FACC15]" /> You’re on the <span className="text-[#FACC15]">{data.tier}</span> tier — priority concierge.</div>
+          <div className="mt-4 onex-card-soft p-3 text-[12px] text-zinc-400 flex items-center gap-2"><Sparkles size={12} className="text-[#8CFF2E]" /> You’re on the <span className="text-[#8CFF2E]">{data.tier}</span> tier — priority concierge.</div>
         </div>
       </div>
     </div>

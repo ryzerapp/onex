@@ -5,7 +5,7 @@ const ProgressRing = ({
   size = 180,
   stroke = 10,
   percent = 0,
-  color = "#FACC15",
+  color = "#8CFF2E",
   trackColor = "#27272A",
   children,
   className = "",

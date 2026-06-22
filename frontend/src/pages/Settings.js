@@ -7,7 +7,7 @@ import { Globe2, Bell, Shield, LogOut, User as UserIcon, Mail, Lock, Wallet } fr
 
 const Section = ({ title, icon: Icon, children, testId }) => (
   <div className="onex-card p-6" data-testid={testId}>
-    <div className="flex items-center gap-2 text-[#FACC15] mb-4"><Icon size={16} /><span className="text-[14px] font-medium">{title}</span></div>
+    <div className="flex items-center gap-2 text-[#8CFF2E] mb-4"><Icon size={16} /><span className="text-[14px] font-medium">{title}</span></div>
     {children}
   </div>
 );
@@ -52,18 +52,18 @@ const Settings = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         <div className="onex-card p-6" data-testid="settings-profile-summary">
           <div className="flex items-center gap-4">
-            {user?.picture ? <img src={user.picture} alt={user.name} className="w-16 h-16 rounded-full object-cover" /> : <div className="w-16 h-16 rounded-full bg-[#FACC15]/15 text-[#FACC15] flex items-center justify-center text-xl font-semibold">{(user?.name || "U").slice(0, 2).toUpperCase()}</div>}
+            {user?.picture ? <img src={user.picture} alt={user.name} className="w-16 h-16 rounded-full object-cover" /> : <div className="w-16 h-16 rounded-full bg-[#8CFF2E]/15 text-[#8CFF2E] flex items-center justify-center text-xl font-semibold">{(user?.name || "U").slice(0, 2).toUpperCase()}</div>}
             <div>
               <div className="text-white text-[18px] font-semibold">{user?.name}</div>
               <div className="text-zinc-500 text-[12px]">{user?.email}</div>
-              <div className="text-[#FACC15] text-[12px] mt-1">{user?.tier} Tier</div>
+              <div className="text-[#8CFF2E] text-[12px] mt-1">{user?.tier} Tier</div>
             </div>
           </div>
           <div className="onex-card-soft p-4 mt-5 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center"><Wallet size={16} className="text-[#FACC15]" /></div>
+            <div className="w-10 h-10 rounded-2xl bg-[#1F3008] border border-[#8CFF2E]/30 flex items-center justify-center"><Wallet size={16} className="text-[#8CFF2E]" /></div>
             <div>
               <div className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">AED Balance</div>
-              <div className="text-[20px] font-semibold text-[#FACC15]">AED {user?.aed_balance}</div>
+              <div className="text-[20px] font-semibold text-[#8CFF2E]">AED {user?.aed_balance}</div>
             </div>
           </div>
           <button onClick={logout} className="mt-5 w-full btn-ghost text-zinc-300" data-testid="settings-logout-btn"><LogOut size={14} /> Sign out</button>
@@ -74,7 +74,7 @@ const Settings = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex flex-col gap-2 text-[12px] text-zinc-500">
                 Full Name
-                <input value={name} onChange={(e) => setName(e.target.value)} data-testid="settings-name-input" className="onex-card-soft px-4 py-3 text-white outline-none focus:border-[#FACC15]/40 transition-all" />
+                <input value={name} onChange={(e) => setName(e.target.value)} data-testid="settings-name-input" className="onex-card-soft px-4 py-3 text-white outline-none focus:border-[#8CFF2E]/40 transition-all" />
               </label>
               <label className="flex flex-col gap-2 text-[12px] text-zinc-500">
                 Email
@@ -82,7 +82,7 @@ const Settings = () => {
               </label>
               <label className="flex flex-col gap-2 text-[12px] text-zinc-500 md:col-span-2">
                 Mobile number
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+971 50 123 4567" data-testid="settings-phone-input" className="onex-card-soft px-4 py-3 text-white outline-none focus:border-[#FACC15]/40 transition-all" />
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+971 50 123 4567" data-testid="settings-phone-input" className="onex-card-soft px-4 py-3 text-white outline-none focus:border-[#8CFF2E]/40 transition-all" />
               </label>
             </div>
           </Section>

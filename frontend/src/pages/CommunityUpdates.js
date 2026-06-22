@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { devDebug } from "@/lib/devDebug";
 import { Heart, Bookmark, Share2, Building2, Megaphone, BookOpen, Award } from "lucide-react";
 
-const typeBadge = { launch: { icon: Building2, label: "Launch", color: "#FACC15" }, founder: { icon: Megaphone, label: "Founder", color: "#A78BFA" }, insight: { icon: BookOpen, label: "Insight", color: "#60A5FA" }, milestone: { icon: Award, label: "Milestone", color: "#22C55E" } };
+const typeBadge = { launch: { icon: Building2, label: "Launch", color: "#8CFF2E" }, founder: { icon: Megaphone, label: "Founder", color: "#A78BFA" }, insight: { icon: BookOpen, label: "Insight", color: "#60A5FA" }, milestone: { icon: Award, label: "Milestone", color: "#22C55E" } };
 
 const CommunityUpdates = () => {
   const [updates, setUpdates] = useState([]);
@@ -25,7 +25,7 @@ const CommunityUpdates = () => {
           const t = typeBadge[u.type] || typeBadge.insight;
           const Icon = t.icon;
           return (
-            <article key={u.id} className="onex-card overflow-hidden hover:-translate-y-1 hover:border-[#FACC15]/30 transition-all flex flex-col" data-testid={`update-card-${u.id}`}>
+            <article key={u.id} className="onex-card overflow-hidden hover:-translate-y-1 hover:border-[#8CFF2E]/30 transition-all flex flex-col" data-testid={`update-card-${u.id}`}>
               <div className="relative h-44">
                 <img src={u.image} alt={u.title} className="absolute inset-0 w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0B] via-transparent to-transparent" />
@@ -42,11 +42,11 @@ const CommunityUpdates = () => {
                 <p className="text-zinc-400 text-[13px] mt-2 leading-relaxed line-clamp-3">{u.body}</p>
                 <div className="mt-5 flex items-center justify-between text-zinc-400 text-[13px]">
                   <div className="flex items-center gap-4">
-                    <button onClick={() => like(u)} className={`flex items-center gap-1.5 hover:text-white transition-colors ${u.liked ? "text-[#FACC15]" : ""}`} data-testid={`update-like-${u.id}`}>
-                      <Heart size={15} fill={u.liked ? "#FACC15" : "none"} /> {u.likes}
+                    <button onClick={() => like(u)} className={`flex items-center gap-1.5 hover:text-white transition-colors ${u.liked ? "text-[#8CFF2E]" : ""}`} data-testid={`update-like-${u.id}`}>
+                      <Heart size={15} fill={u.liked ? "#8CFF2E" : "none"} /> {u.likes}
                     </button>
-                    <button onClick={() => save(u)} className={`flex items-center gap-1.5 hover:text-white transition-colors ${u.saved ? "text-[#FACC15]" : ""}`} data-testid={`update-save-${u.id}`}>
-                      <Bookmark size={15} fill={u.saved ? "#FACC15" : "none"} />
+                    <button onClick={() => save(u)} className={`flex items-center gap-1.5 hover:text-white transition-colors ${u.saved ? "text-[#8CFF2E]" : ""}`} data-testid={`update-save-${u.id}`}>
+                      <Bookmark size={15} fill={u.saved ? "#8CFF2E" : "none"} />
                     </button>
                     <button onClick={() => share(u)} className="flex items-center gap-1.5 hover:text-white transition-colors" data-testid={`update-share-${u.id}`}>
                       <Share2 size={15} /> {u.shares}

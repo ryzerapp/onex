@@ -15,7 +15,7 @@ const channels = [
     href: (link, msg) => `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(msg)}` },
   { id: "linkedin", label: "LinkedIn", icon: Linkedin, color: "#A78BFA",
     href: (link) => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(link)}` },
-  { id: "email", label: "Email", icon: Mail, color: "#FACC15",
+  { id: "email", label: "Email", icon: Mail, color: "#8CFF2E",
     href: (link, msg) => `mailto:?subject=${encodeURIComponent("You're invited to OneX Club")}&body=${encodeURIComponent(`${msg}\n\n${link}`)}` },
 ];
 
@@ -24,7 +24,7 @@ const missionIcons = { invite: UserPlus, verify_mobile: Phone, complete_kyc: Shi
 const STATUS_STYLES = {
   signed_up:      { color: "#60A5FA", bg: "#1E2A3E", label: "Signed up" },
   verified:       { color: "#22C55E", bg: "#1F3A2D", label: "Verified" },
-  kyc_completed:  { color: "#FACC15", bg: "#3A2F0F", label: "KYC complete" },
+  kyc_completed:  { color: "#8CFF2E", bg: "#1F3008", label: "KYC complete" },
   pending:        { color: "#A78BFA", bg: "#241B3F", label: "Clicked · pending" },
   expired:        { color: "#71717A", bg: "#1E1F24", label: "Expired" },
 };
@@ -94,7 +94,7 @@ const InviteEarn = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         {/* Left: link + share */}
         <div className="lg:col-span-2 onex-card p-6 sm:p-8" data-testid="referral-link-card">
-          <div className="text-[12px] uppercase tracking-[0.18em] text-[#FACC15]">Your Referral Link</div>
+          <div className="text-[12px] uppercase tracking-[0.18em] text-[#8CFF2E]">Your Referral Link</div>
           <div className="mt-5 onex-card-soft p-3 flex items-center gap-3">
             <div className="flex-1 text-zinc-300 text-[13px] truncate px-3 py-2 bg-[#0A0A0B] rounded-xl border border-[#27272A]" data-testid="referral-link-value">{data.referral_link}</div>
             <button onClick={copyLink} data-testid="referral-copy-btn" className="btn-gold !py-2.5"><Copy size={14} /> Copy</button>
@@ -108,7 +108,7 @@ const InviteEarn = () => {
                   key={c.id}
                   onClick={() => share(c.id)}
                   data-testid={`share-${c.id}`}
-                  className="onex-card-soft p-4 flex items-center gap-3 hover:border-[#FACC15]/30 transition-all"
+                  className="onex-card-soft p-4 flex items-center gap-3 hover:border-[#8CFF2E]/30 transition-all"
                 >
                   <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: `${c.color}1F`, border: `1px solid ${c.color}44` }}>
                     <Icon size={16} style={{ color: c.color }} />
@@ -125,8 +125,8 @@ const InviteEarn = () => {
             <StatCard testid="referral-stat-signups" icon={UserPlus} label="Signups" value={data.stats.signups} color="#22C55E" />
             <StatCard testid="referral-stat-pending" icon={Clock} label="Pending" value={data.stats.pending} color="#A78BFA" hint="not signed-up yet" />
             <StatCard testid="referral-stat-verified" icon={CheckCircle2} label="Verified" value={data.stats.verified} color="#22C55E" />
-            <StatCard testid="referral-stat-kyc" icon={ShieldCheck} label="KYC Completed" value={data.stats.kyc_completed} color="#FACC15" />
-            <StatCard testid="referral-stat-aed" icon={Sparkles} label="AED Earned" value={`AED ${data.stats.aed_earned.toLocaleString()}`} color="#FACC15" />
+            <StatCard testid="referral-stat-kyc" icon={ShieldCheck} label="KYC Completed" value={data.stats.kyc_completed} color="#8CFF2E" />
+            <StatCard testid="referral-stat-aed" icon={Sparkles} label="AED Earned" value={`AED ${data.stats.aed_earned.toLocaleString()}`} color="#8CFF2E" />
           </div>
 
           {/* Expired alert */}
@@ -150,14 +150,14 @@ const InviteEarn = () => {
               const Icon = missionIcons[m.id] || UserPlus;
               return (
                 <div key={m.id} className="onex-card-soft p-4 flex items-center gap-3" data-testid={`mission-${m.id}`}>
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${m.completed ? "bg-[#1F3A2D] border border-[#22C55E]/40" : "bg-[#3A2F0F] border border-[#FACC15]/30"}`}>
-                    {m.completed ? <CheckCircle2 size={16} className="text-[#22C55E]" /> : <Icon size={16} className="text-[#FACC15]" />}
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${m.completed ? "bg-[#1F3A2D] border border-[#22C55E]/40" : "bg-[#1F3008] border border-[#8CFF2E]/30"}`}>
+                    {m.completed ? <CheckCircle2 size={16} className="text-[#22C55E]" /> : <Icon size={16} className="text-[#8CFF2E]" />}
                   </div>
                   <div className="flex-1">
                     <div className="text-white text-[14px] font-medium">{m.title}</div>
                     <div className="text-zinc-500 text-[12px]">{m.subtitle}</div>
                   </div>
-                  <div className={`text-[13px] font-semibold ${m.completed ? "text-[#22C55E]" : "text-[#FACC15]"}`}>+AED {m.aed}</div>
+                  <div className={`text-[13px] font-semibold ${m.completed ? "text-[#22C55E]" : "text-[#8CFF2E]"}`}>+AED {m.aed}</div>
                 </div>
               );
             })}
@@ -183,7 +183,7 @@ const InviteEarn = () => {
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 data-testid={`referral-tab-${t.id}`}
-                className={`px-4 py-2 rounded-full text-[12px] font-medium border transition-all ${tab === t.id ? "onex-gold-fill border-[#FACC15]" : "border-[#27272A] text-zinc-300 hover:border-[#FACC15]/30"}`}
+                className={`px-4 py-2 rounded-full text-[12px] font-medium border transition-all ${tab === t.id ? "onex-gold-fill border-[#8CFF2E]" : "border-[#27272A] text-zinc-300 hover:border-[#8CFF2E]/30"}`}
               >{t.label}</button>
             ))}
           </div>
@@ -226,7 +226,7 @@ const InviteEarn = () => {
                     <td className="py-4 pr-3 text-zinc-400 text-[12.5px] capitalize">{e.via || e.source || "link"}</td>
                     <td className="py-4 pr-3 text-zinc-400 text-[12.5px]">{fmtDate(e.joined_at)}</td>
                     <td className="py-4 pr-3 text-right">
-                      <span className={`text-[13px] font-semibold ${e.aed_earned > 0 ? "text-[#FACC15]" : "text-zinc-600"}`}>
+                      <span className={`text-[13px] font-semibold ${e.aed_earned > 0 ? "text-[#8CFF2E]" : "text-zinc-600"}`}>
                         {e.aed_earned > 0 ? `+AED ${e.aed_earned}` : "—"}
                       </span>
                     </td>

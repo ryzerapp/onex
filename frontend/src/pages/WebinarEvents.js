@@ -89,7 +89,7 @@ const WebinarEvents = () => {
             key={t.id}
             onClick={() => setTab(t.id)}
             data-testid={`webinars-tab-${t.id}`}
-            className={`px-5 py-2.5 rounded-full text-[13px] font-medium border transition-all ${tab === t.id ? "onex-gold-fill border-[#FACC15]" : "border-[#27272A] text-zinc-300 hover:border-[#FACC15]/30"}`}
+            className={`px-5 py-2.5 rounded-full text-[13px] font-medium border transition-all ${tab === t.id ? "onex-gold-fill border-[#8CFF2E]" : "border-[#27272A] text-zinc-300 hover:border-[#8CFF2E]/30"}`}
           >{t.label}</button>
         ))}
       </div>
@@ -104,13 +104,13 @@ const WebinarEvents = () => {
             {featured.is_live && <span className="absolute top-5 right-5 onex-pill bg-[#EF4444]/20 text-[#FCA5A5] border border-[#EF4444]/40 pulse-live"><Radio size={11} /> LIVE NOW</span>}
           </div>
           <div className="p-8 flex flex-col justify-center">
-            <div className="text-[12px] uppercase tracking-[0.18em] text-[#FACC15]">{featured.is_live ? "Live now" : `Live · ${new Date(featured.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}</div>
+            <div className="text-[12px] uppercase tracking-[0.18em] text-[#8CFF2E]">{featured.is_live ? "Live now" : `Live · ${new Date(featured.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}</div>
             <h2 className="text-3xl font-display text-white mt-3 leading-tight">{featured.title}</h2>
             <p className="text-zinc-400 text-[14px] mt-3">{featured.description}</p>
             <div className="flex items-center gap-5 mt-5 text-zinc-400 text-[13px]">
               <span className="flex items-center gap-1.5"><Clock size={14} /> {featured.duration_minutes} min</span>
               <span className="flex items-center gap-1.5"><Users size={14} /> {featured.attendees} attending</span>
-              <span className="flex items-center gap-1.5 text-[#FACC15]"><Star size={14} /> +AED {featured.aed_reward}</span>
+              <span className="flex items-center gap-1.5 text-[#8CFF2E]"><Star size={14} /> +AED {featured.aed_reward}</span>
             </div>
             <div className="flex gap-3 mt-6 flex-wrap">
               {featured.registered && featured.is_live ? (
@@ -133,7 +133,7 @@ const WebinarEvents = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mt-8">
         {data.webinars.length === 0 && <div className="text-zinc-500 col-span-3 text-[14px]" data-testid="webinars-empty">No sessions in this tab yet.</div>}
         {data.webinars.map((w) => (
-          <div key={w.id} className="onex-card overflow-hidden hover:-translate-y-1 hover:border-[#FACC15]/30 transition-all flex flex-col" data-testid={`webinar-card-${w.id}`}>
+          <div key={w.id} className="onex-card overflow-hidden hover:-translate-y-1 hover:border-[#8CFF2E]/30 transition-all flex flex-col" data-testid={`webinar-card-${w.id}`}>
             <div className="relative h-44">
               <img src={w.image} alt={w.title} className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0B]/80 via-transparent to-transparent" />
@@ -156,7 +156,7 @@ const WebinarEvents = () => {
               <div className="flex items-center gap-4 text-zinc-400 text-[12px] mt-3">
                 <span className="flex items-center gap-1.5"><Clock size={12} /> {w.duration_minutes} min</span>
                 <span className="flex items-center gap-1.5"><Users size={12} /> {w.attendees}</span>
-                {w.aed_reward > 0 && <span className="flex items-center gap-1 text-[#FACC15]"><Star size={12} /> +AED {w.aed_reward}</span>}
+                {w.aed_reward > 0 && <span className="flex items-center gap-1 text-[#8CFF2E]"><Star size={12} /> +AED {w.aed_reward}</span>}
               </div>
               <p className="text-zinc-500 text-[13px] mt-3 line-clamp-2">{w.description}</p>
               <div className="mt-5">
@@ -173,7 +173,7 @@ const WebinarEvents = () => {
           <h3 className="text-white text-[18px] font-semibold">Your Learning Journey</h3>
           <p className="text-zinc-400 text-[13px]">Attended {data.summary.attended} · Registered {data.summary.registered}</p>
         </div>
-        <button className="btn-ghost text-[#FACC15] border-[#FACC15]/40" data-testid="webinars-history-btn">View History <ArrowRight size={14} /></button>
+        <button className="btn-ghost text-[#8CFF2E] border-[#8CFF2E]/40" data-testid="webinars-history-btn">View History <ArrowRight size={14} /></button>
       </div>
 
       <LumaRegisterModal

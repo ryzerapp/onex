@@ -9,7 +9,7 @@ import { X, Lock, Sparkles, Calendar, UserPlus, ShieldCheck, Wallet, Building2, 
 const TIER_DETAILS = {
   "Co-Owner Member": {
     icon: Sparkles,
-    color: "#FACC15",
+    color: "#8CFF2E",
     headline: "Your first access pass.",
     why: "The moment you unlock Co-Owner Member, every future Dubai launch opens to you 24 hours earlier than the public waitlist.",
     benefits: [
@@ -26,7 +26,7 @@ const TIER_DETAILS = {
   },
   "Priority Co-Owner": {
     icon: Sparkles,
-    color: "#FACC15",
+    color: "#8CFF2E",
     headline: "Priority allocation. Closed-door briefings.",
     why: "Priority members allocate first, on better pricing, with direct access to OneX leadership.",
     benefits: [
@@ -44,7 +44,7 @@ const TIER_DETAILS = {
   },
   "Co-Owner Circle": {
     icon: Sparkles,
-    color: "#FACC15",
+    color: "#8CFF2E",
     headline: "The Circle — hospitality meets ownership.",
     why: "Members of the Circle enjoy concierge-grade experiences on top of every allocation benefit.",
     benefits: [
@@ -61,7 +61,7 @@ const TIER_DETAILS = {
   },
   "Elite Co-Owner": {
     icon: Sparkles,
-    color: "#FACC15",
+    color: "#8CFF2E",
     headline: "The top tier. Architect the OneX roadmap.",
     why: "Elite members have a seat at the table — and a relationship manager who never sleeps.",
     benefits: [
@@ -105,7 +105,7 @@ const LevelDetailModal = ({ tier, currentBalance, onClose, onAction }) => {
             {unlocked ? <Icon size={22} /> : <Lock size={22} className="text-zinc-400" />}
           </div>
           <div>
-            <div className="text-[12px] uppercase tracking-[0.18em] text-[#FACC15]">Level {tier.level}</div>
+            <div className="text-[12px] uppercase tracking-[0.18em] text-[#8CFF2E]">Level {tier.level}</div>
             <div className="text-[26px] font-display text-white leading-tight">{tier.name}</div>
             <div className="text-[12px] text-zinc-500">AED {tier.threshold.toLocaleString()} balance to unlock</div>
           </div>
@@ -119,7 +119,7 @@ const LevelDetailModal = ({ tier, currentBalance, onClose, onAction }) => {
             <div className="text-[12px] uppercase tracking-[0.15em] text-zinc-500 mb-3">What unlocks at this level</div>
             <ul className="space-y-2.5">
               {detail.benefits.map((b) => (
-                <li key={b} className="flex items-start gap-2.5 text-zinc-200 text-[13px]"><Check size={14} className="text-[#FACC15] mt-0.5 shrink-0" /><span>{b}</span></li>
+                <li key={b} className="flex items-start gap-2.5 text-zinc-200 text-[13px]"><Check size={14} className="text-[#8CFF2E] mt-0.5 shrink-0" /><span>{b}</span></li>
               ))}
             </ul>
           </div>
@@ -134,14 +134,14 @@ const LevelDetailModal = ({ tier, currentBalance, onClose, onAction }) => {
                     key={a.title}
                     onClick={() => onAction?.(a)}
                     data-testid={`level-action-${idx}`}
-                    className="w-full onex-card-soft p-3 flex items-center gap-3 hover:border-[#FACC15]/30 transition-all text-left"
+                    className="w-full onex-card-soft p-3 flex items-center gap-3 hover:border-[#8CFF2E]/30 transition-all text-left"
                   >
-                    <div className="w-9 h-9 rounded-2xl bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center shrink-0">
-                      <ActionIcon size={14} className="text-[#FACC15]" />
+                    <div className="w-9 h-9 rounded-2xl bg-[#1F3008] border border-[#8CFF2E]/30 flex items-center justify-center shrink-0">
+                      <ActionIcon size={14} className="text-[#8CFF2E]" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-white text-[13px] font-medium truncate">{a.title}</div>
-                      <div className="text-[#FACC15] text-[12px]">+AED {a.aed}</div>
+                      <div className="text-[#8CFF2E] text-[12px]">+AED {a.aed}</div>
                     </div>
                     <ArrowRight size={14} className="text-zinc-500" />
                   </button>
@@ -155,7 +155,7 @@ const LevelDetailModal = ({ tier, currentBalance, onClose, onAction }) => {
           <div className="onex-card-soft p-4 mt-6 flex items-center justify-between gap-4" data-testid="level-detail-remaining">
             <div>
               <div className="text-[11px] uppercase tracking-[0.15em] text-zinc-500">Remaining</div>
-              <div className="text-[#FACC15] text-[22px] font-display">AED {remaining.toLocaleString()}</div>
+              <div className="text-[#8CFF2E] text-[22px] font-display">AED {remaining.toLocaleString()}</div>
             </div>
             <div className="text-right">
               <div className="text-[11px] uppercase tracking-[0.15em] text-zinc-500">Your balance</div>

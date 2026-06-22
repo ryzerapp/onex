@@ -35,7 +35,7 @@ const DubaiProperties = () => {
     <div data-testid="properties-page">
       <div className="flex items-start justify-between gap-6 flex-wrap">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 22V8l6-4 6 4v14M9 22v-6h6v6M9 12h6" stroke="#FACC15" strokeWidth="1.5" /></svg></div>
+          <div className="w-14 h-14 rounded-2xl bg-[#1F3008] border border-[#8CFF2E]/30 flex items-center justify-center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 22V8l6-4 6 4v14M9 22v-6h6v6M9 12h6" stroke="#8CFF2E" strokeWidth="1.5" /></svg></div>
           <div>
             <h1 className="text-4xl sm:text-5xl font-display tracking-tight text-white">Dubai Properties</h1>
             <p className="text-zinc-400 mt-1 text-[15px]">Own a piece of Dubai. Built for high-yield. Backed by OneX.</p>
@@ -55,7 +55,7 @@ const DubaiProperties = () => {
               key={c.id}
               onClick={() => setCategory(c.id)}
               data-testid={`properties-filter-${c.id}`}
-              className={`px-5 py-2.5 rounded-full text-[13px] font-medium transition-all border ${category === c.id ? "onex-gold-fill border-[#FACC15]" : "border-[#27272A] text-zinc-300 hover:border-[#FACC15]/30"}`}
+              className={`px-5 py-2.5 rounded-full text-[13px] font-medium transition-all border ${category === c.id ? "onex-gold-fill border-[#8CFF2E]" : "border-[#27272A] text-zinc-300 hover:border-[#8CFF2E]/30"}`}
             >{c.label}</button>
           ))}
         </div>
@@ -68,19 +68,19 @@ const DubaiProperties = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-8">
         <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
           {properties.map((p) => (
-            <div key={p.id} className="onex-card overflow-hidden hover:-translate-y-1 hover:border-[#FACC15]/30 transition-all flex flex-col" data-testid={`property-card-${p.id}`}>
+            <div key={p.id} className="onex-card overflow-hidden hover:-translate-y-1 hover:border-[#8CFF2E]/30 transition-all flex flex-col" data-testid={`property-card-${p.id}`}>
               <div className="relative h-56">
                 <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                 <div className="absolute inset-x-0 top-0 p-4 flex items-start justify-between">
                   <span className="onex-gold-fill onex-pill !text-[10px] !px-3">{p.status}</span>
-                  <button onClick={() => save(p)} data-testid={`property-save-${p.id}`} className={`w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center transition-all ${p.saved ? "bg-[#FACC15] text-black" : "bg-black/40 text-white hover:bg-black/60"}`}>
+                  <button onClick={() => save(p)} data-testid={`property-save-${p.id}`} className={`w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center transition-all ${p.saved ? "bg-[#8CFF2E] text-black" : "bg-black/40 text-white hover:bg-black/60"}`}>
                     <Heart size={16} fill={p.saved ? "#0A0A0B" : "none"} />
                   </button>
                 </div>
               </div>
               <div className="p-5 flex flex-col flex-1">
                 <h3 className="text-[18px] font-semibold text-white leading-tight">{p.name}</h3>
-                <div className="flex items-center gap-2 text-zinc-400 text-[13px] mt-2"><MapPin size={13} className="text-[#FACC15]" /> {p.location}</div>
+                <div className="flex items-center gap-2 text-zinc-400 text-[13px] mt-2"><MapPin size={13} className="text-[#8CFF2E]" /> {p.location}</div>
                 <p className="text-zinc-400 text-[13px] mt-3 leading-relaxed line-clamp-3">{p.description}</p>
                 <div className="grid grid-cols-3 gap-3 mt-5">
                   <div>
@@ -102,7 +102,7 @@ const DubaiProperties = () => {
                 <div className="mt-4 flex items-center gap-2 text-zinc-500 text-[12px]">
                   <div className="flex -space-x-2">
                     {[0, 1, 2].map(i => (
-                      <div key={i} className="w-7 h-7 rounded-full border-2 border-[#15161A] bg-[#FACC15]/20" />
+                      <div key={i} className="w-7 h-7 rounded-full border-2 border-[#15161A] bg-[#8CFF2E]/20" />
                     ))}
                   </div>
                   <span>{p.waitlist_count}+ on waitlist</span>
@@ -125,7 +125,7 @@ const DubaiProperties = () => {
               const Icon = b.icon;
               return (
                 <div key={b.title} className="flex gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center shrink-0"><Icon size={16} className="text-[#FACC15]" /></div>
+                  <div className="w-10 h-10 rounded-2xl bg-[#1F3008] border border-[#8CFF2E]/30 flex items-center justify-center shrink-0"><Icon size={16} className="text-[#8CFF2E]" /></div>
                   <div>
                     <div className="text-white text-[14px] font-medium">{b.title}</div>
                     <div className="text-zinc-500 text-[12px] mt-1 leading-relaxed">{b.body}</div>
@@ -134,7 +134,7 @@ const DubaiProperties = () => {
               );
             })}
           </div>
-          <button className="mt-6 text-[13px] text-[#FACC15] hover:underline flex items-center gap-1" data-testid="learn-more-dubai-btn">Learn more about Dubai <ArrowRight size={14} /></button>
+          <button className="mt-6 text-[13px] text-[#8CFF2E] hover:underline flex items-center gap-1" data-testid="learn-more-dubai-btn">Learn more about Dubai <ArrowRight size={14} /></button>
         </div>
       </div>
 
@@ -147,16 +147,16 @@ const DubaiProperties = () => {
             <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 relative">
               {["Join Waitlist", "Verify Mobile", "Complete KYC", "Attend Webinar", "Reserve Interest"].map((s, i) => (
                 <div key={s} className="text-center" data-testid={`signup-step-${i + 1}`}>
-                  <div className="w-14 h-14 mx-auto rounded-full bg-[#15161A] border border-[#FACC15]/30 flex items-center justify-center"><span className="text-[#FACC15] text-[13px] font-semibold">{i + 1}</span></div>
+                  <div className="w-14 h-14 mx-auto rounded-full bg-[#15161A] border border-[#8CFF2E]/30 flex items-center justify-center"><span className="text-[#8CFF2E] text-[13px] font-semibold">{i + 1}</span></div>
                   <div className="text-[12px] text-white mt-2">{s}</div>
                 </div>
               ))}
             </div>
           </div>
           <div className="onex-card-soft p-6 max-w-sm">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center"><Gift size={16} className="text-[#FACC15]" /></div><div className="text-white text-[15px] font-medium">Early Access Advantage</div></div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-[#1F3008] border border-[#8CFF2E]/30 flex items-center justify-center"><Gift size={16} className="text-[#8CFF2E]" /></div><div className="text-white text-[15px] font-medium">Early Access Advantage</div></div>
             <p className="text-zinc-400 text-[13px] mt-3">Be the first to know about new launches and secure the best allocation opportunities.</p>
-            <button onClick={() => join(properties[0])} className="mt-5 w-full btn-ghost border-[#FACC15]/30 text-[#FACC15]" data-testid="not-member-join-btn">Join Waitlist Now <ArrowRight size={14} /></button>
+            <button onClick={() => join(properties[0])} className="mt-5 w-full btn-ghost border-[#8CFF2E]/30 text-[#8CFF2E]" data-testid="not-member-join-btn">Join Waitlist Now <ArrowRight size={14} /></button>
           </div>
         </div>
       </div>

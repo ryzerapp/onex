@@ -553,7 +553,7 @@ async def auth_email_start(payload: EmailStart, request: Request, background: Ba
     body = f"""
     <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#0A0A0B;border:1px solid #27272A;border-radius:16px;'>
       <tr><td style='padding:24px;text-align:center;'>
-        <div style='color:#FACC15;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;'>Your sign-in code</div>
+        <div style='color:#8CFF2E;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;'>Your sign-in code</div>
         <div style='color:#FFFFFF;font-size:40px;font-weight:600;padding:12px 0;letter-spacing:0.3em;font-family:monospace;'>{code}</div>
         <div style='color:#A1A1AA;font-size:13px;'>Expires in 15 minutes.</div>
       </td></tr>

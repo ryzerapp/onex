@@ -15,7 +15,7 @@ import resend
 
 log = logging.getLogger("onex.email")
 
-_BRAND_GOLD = "#FACC15"
+_BRAND_GOLD = "#8CFF2E"
 _BG = "#0A0A0B"
 _SURFACE = "#15161A"
 _BORDER = "#27272A"

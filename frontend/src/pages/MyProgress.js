@@ -18,7 +18,7 @@ const PROGRESS_RING_STROKE = 10;
 
 const STATUS_STYLES = {
   completed: { color: "#22C55E", bg: "#1F3A2D", label: "Completed" },
-  pending: { color: "#FACC15", bg: "#3A2F0F", label: "Pending" },
+  pending: { color: "#8CFF2E", bg: "#1F3008", label: "Pending" },
   upcoming: { color: "#71717A", bg: "#1E1F24", label: "Upcoming" },
 };
 
@@ -28,7 +28,7 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
   if (nextReward.kind === "maxed") {
     return (
       <div className="onex-card p-6" data-testid="next-reward-card">
-        <div className="flex items-center gap-2 text-[#FACC15]">
+        <div className="flex items-center gap-2 text-[#8CFF2E]">
           <Crown size={16} />
           <span className="text-[13px] font-medium">Elite Status Achieved</span>
         </div>
@@ -39,7 +39,7 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
             <div className="text-[12px] text-zinc-500 mt-1">Every co-owner benefit is unlocked.</div>
           </div>
         </div>
-        <button onClick={onCtaClick} className="mt-5 w-full btn-ghost border-[#FACC15]/40 text-[#FACC15]" data-testid="next-reward-elite-cta">
+        <button onClick={onCtaClick} className="mt-5 w-full btn-ghost border-[#8CFF2E]/40 text-[#8CFF2E]" data-testid="next-reward-elite-cta">
           See All Benefits <ArrowRight size={14} />
         </button>
       </div>
@@ -51,7 +51,7 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
     const tierPct = Math.min(100, Math.round((balance / tierThreshold) * 100));
     return (
       <div className="onex-card p-6" data-testid="next-reward-card">
-        <div className="flex items-center gap-2 text-[#FACC15]">
+        <div className="flex items-center gap-2 text-[#8CFF2E]">
           <Trophy size={16} />
           <span className="text-[13px] font-medium">Next Tier Reward</span>
         </div>
@@ -61,12 +61,12 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
         <div className="mt-5 flex items-center gap-4">
           <div className="w-16 h-16 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
           <div>
-            <div className="text-[24px] font-semibold text-[#FACC15]">AED {nextReward.amount}</div>
+            <div className="text-[24px] font-semibold text-[#8CFF2E]">AED {nextReward.amount}</div>
             <div className="text-[12px] text-zinc-500">to unlock {nextReward.tier_name}</div>
           </div>
         </div>
         <div className="h-2 mt-5 rounded-full bg-[#27272A] overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-[#FACC15] to-[#EAB308]" style={{ width: `${tierPct}%` }} />
+          <div className="h-full bg-gradient-to-r from-[#8CFF2E] to-[#6DDB1E]" style={{ width: `${tierPct}%` }} />
         </div>
         <div className="text-right text-[11px] text-zinc-500 mt-2 tabular-nums">AED {balance} / AED {tierThreshold}</div>
         <button onClick={onCtaClick} className="mt-5 w-full btn-gold" data-testid="next-reward-tier-cta">
@@ -79,16 +79,16 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
   // milestone kind
   return (
     <div className="onex-card p-6" data-testid="next-reward-card">
-      <div className="flex items-center gap-2 text-[#FACC15]"><Gift size={16} /><span className="text-[13px] font-medium">Next Reward</span></div>
+      <div className="flex items-center gap-2 text-[#8CFF2E]"><Gift size={16} /><span className="text-[13px] font-medium">Next Reward</span></div>
       <div className="mt-5 flex items-center gap-4">
         <div className="w-16 h-16 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
         <div>
-          <div className="text-[28px] font-semibold text-[#FACC15]">+AED {nextReward.amount}</div>
+          <div className="text-[28px] font-semibold text-[#8CFF2E]">+AED {nextReward.amount}</div>
           <div className="text-[12px] text-zinc-500">Complete {nextReward.label}</div>
         </div>
       </div>
       <div className="h-2 mt-5 rounded-full bg-[#27272A] overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-[#FACC15] to-[#EAB308]" style={{ width: `${percent}%` }} />
+        <div className="h-full bg-gradient-to-r from-[#8CFF2E] to-[#6DDB1E]" style={{ width: `${percent}%` }} />
       </div>
       <div className="text-right text-[11px] text-zinc-500 mt-2 tabular-nums">{completedCount} / {total} completed</div>
       {allDone && (
@@ -160,14 +160,14 @@ const MyProgress = () => {
             <div className="text-[#22C55E] text-[14px] mt-2">You’re doing great!</div>
           </div>
           <ProgressRing size={160} stroke={10} percent={data.percent}>
-            <Flag className="text-[#FACC15]" size={36} />
+            <Flag className="text-[#8CFF2E]" size={36} />
           </ProgressRing>
         </div>
         <div className="grid grid-cols-3 gap-4">
           {[
             { icon: CheckCircle2, color: "#22C55E", bg: "#1F3A2D", value: `${data.completed_count} / ${data.total}`, label: "Steps Completed" },
             { icon: Calendar, color: "#A78BFA", bg: "#2A1F4A", value: data.upcoming_count, label: "Upcoming Steps" },
-            { icon: Gift, color: "#FACC15", bg: "#3A2F0F", value: `AED ${data.to_next_reward}`, label: "To Next Reward" },
+            { icon: Gift, color: "#8CFF2E", bg: "#1F3008", value: `AED ${data.to_next_reward}`, label: "To Next Reward" },
           ].map((s) => {
             const Icon = s.icon;
             return (

@@ -9,7 +9,7 @@ const PERIODS = [
 ];
 
 const PODIUM_TONES = {
-  1: { color: "#FACC15", soft: "#FACC15", glow: "lb-bar-glow", height: "h-60", icon: Crown, label: "Champion" },
+  1: { color: "#8CFF2E", soft: "#8CFF2E", glow: "lb-bar-glow", height: "h-60", icon: Crown, label: "Champion" },
   2: { color: "#D4D4D8", soft: "#A1A1AA", glow: "lb-bar-silver-glow", height: "h-48", icon: Medal, label: "Runner-up" },
   3: { color: "#D97706", soft: "#B45309", glow: "lb-bar-bronze-glow", height: "h-40", icon: Award, label: "Bronze" },
 };
@@ -74,7 +74,7 @@ const Leaderboard = () => {
     <div data-testid="leaderboard-page">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <div className="text-[12px] uppercase tracking-[0.18em] text-[#FACC15] flex items-center gap-2"><Trophy size={12} /> Leaderboard</div>
+          <div className="text-[12px] uppercase tracking-[0.18em] text-[#8CFF2E] flex items-center gap-2"><Trophy size={12} /> Leaderboard</div>
           <h1 className="text-4xl sm:text-5xl font-display tracking-tight mt-2"><span className="gold-shimmer">OneX Champions</span></h1>
           <p className="text-zinc-400 mt-2 text-[15px]">Celebrating the members who grew the community {periodCopy}.</p>
         </div>
@@ -84,7 +84,7 @@ const Leaderboard = () => {
               key={p.id}
               onClick={() => setPeriod(p.id)}
               data-testid={`period-${p.id}`}
-              className={`px-5 py-2.5 rounded-full text-[13px] font-medium border transition-all ${period === p.id ? "onex-gold-fill border-[#FACC15]" : "border-[#27272A] text-zinc-300 hover:border-[#FACC15]/30"}`}
+              className={`px-5 py-2.5 rounded-full text-[13px] font-medium border transition-all ${period === p.id ? "onex-gold-fill border-[#8CFF2E]" : "border-[#27272A] text-zinc-300 hover:border-[#8CFF2E]/30"}`}
             >{p.label}</button>
           ))}
         </div>
@@ -93,11 +93,11 @@ const Leaderboard = () => {
       {/* My rank summary — dramatic hero */}
       <div
         className="onex-card mt-8 p-6 sm:p-7 flex items-center gap-6 flex-wrap relative overflow-hidden"
-        style={{ background: "radial-gradient(120% 80% at 0% 0%, rgba(250,204,21,0.10) 0%, rgba(250,204,21,0) 55%), #15161A" }}
+        style={{ background: "radial-gradient(120% 80% at 0% 0%, rgba(140,255,46,0.10) 0%, rgba(140,255,46,0) 55%), #15161A" }}
         data-testid="my-rank-card"
       >
-        <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-[#FACC15]/10 blur-3xl pointer-events-none" />
-        <div className="w-20 h-20 rounded-full onex-gold-fill flex items-center justify-center shadow-lg" style={{ boxShadow: "0 0 30px rgba(250,204,21,0.35)" }}>
+        <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-[#8CFF2E]/10 blur-3xl pointer-events-none" />
+        <div className="w-20 h-20 rounded-full onex-gold-fill flex items-center justify-center shadow-lg" style={{ boxShadow: "0 0 30px rgba(140,255,46,0.35)" }}>
           <div className="text-[26px] font-display leading-none">#{data.me.rank}</div>
         </div>
         <div className="flex-1 min-w-[220px]">
@@ -107,13 +107,13 @@ const Leaderboard = () => {
             <span className="onex-pill onex-gold-fill !text-[10px]">{data.me.tier}</span>
           </div>
           <div className="text-zinc-400 text-[13px] mt-1 flex items-center gap-3 flex-wrap">
-            <span className="flex items-center gap-1"><Sparkles size={12} className="text-[#FACC15]" /> {data.me.balance.toLocaleString()} AED earned</span>
+            <span className="flex items-center gap-1"><Sparkles size={12} className="text-[#8CFF2E]" /> {data.me.balance.toLocaleString()} AED earned</span>
             <span className="flex items-center gap-1"><Users size={12} /> {data.me.referrals} referrals</span>
           </div>
         </div>
         <div className="flex gap-5 items-stretch">
-          <div className="px-5 py-3 rounded-2xl border border-[#FACC15]/30 bg-[#3A2F0F]/40">
-            <div className="text-[#FACC15] text-[24px] font-display leading-none">AED {data.me.balance.toLocaleString()}</div>
+          <div className="px-5 py-3 rounded-2xl border border-[#8CFF2E]/30 bg-[#1F3008]/40">
+            <div className="text-[#8CFF2E] text-[24px] font-display leading-none">AED {data.me.balance.toLocaleString()}</div>
             <div className="text-zinc-500 text-[10px] uppercase tracking-[0.18em] mt-1">{period === "all_time" ? "Total Balance" : "Earned"}</div>
           </div>
           <div className="px-5 py-3 rounded-2xl border border-[#22C55E]/30 bg-[#1F3A2D]/40">
@@ -145,14 +145,14 @@ const Leaderboard = () => {
             return (
               <div
                 key={`${u.name}-${u.rank}`}
-                className={`flex items-center gap-4 px-3 sm:px-4 py-3 rounded-2xl transition-all ${u.is_user ? "bg-[#FACC15]/10 border border-[#FACC15]/40" : "hover:bg-white/[0.02]"}`}
+                className={`flex items-center gap-4 px-3 sm:px-4 py-3 rounded-2xl transition-all ${u.is_user ? "bg-[#8CFF2E]/10 border border-[#8CFF2E]/40" : "hover:bg-white/[0.02]"}`}
                 data-testid={`leaderboard-row-${u.rank}`}
               >
                 <div className="w-10 text-center text-zinc-400 text-[14px] font-semibold tabular-nums">#{u.rank}</div>
                 {u.avatar ? (
                   <img src={u.avatar} alt={u.name} className="w-11 h-11 rounded-full object-cover border border-white/10" />
                 ) : (
-                  <div className="w-11 h-11 rounded-full bg-[#FACC15]/15 text-[#FACC15] flex items-center justify-center text-[13px] font-semibold border border-[#FACC15]/20">{initials(u.name)}</div>
+                  <div className="w-11 h-11 rounded-full bg-[#8CFF2E]/15 text-[#8CFF2E] flex items-center justify-center text-[13px] font-semibold border border-[#8CFF2E]/20">{initials(u.name)}</div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="text-white text-[14px] font-medium truncate flex items-center gap-2">
@@ -171,12 +171,12 @@ const Leaderboard = () => {
                     className="h-full rounded-full"
                     style={{
                       width: `${Math.min(100, (u.balance / Math.max(1, data.podium[0]?.balance || 1)) * 100)}%`,
-                      background: u.is_user ? "linear-gradient(90deg,#FACC15,#EAB308)" : "linear-gradient(90deg,#3F3F46,#52525B)",
+                      background: u.is_user ? "linear-gradient(90deg,#8CFF2E,#6DDB1E)" : "linear-gradient(90deg,#3F3F46,#52525B)",
                     }}
                   />
                 </div>
                 <div className="text-right min-w-[88px]">
-                  <div className="text-[#FACC15] text-[14px] font-semibold tabular-nums">AED {u.balance.toLocaleString()}</div>
+                  <div className="text-[#8CFF2E] text-[14px] font-semibold tabular-nums">AED {u.balance.toLocaleString()}</div>
                   <div className={`text-[11px] flex items-center justify-end gap-0.5 ${movement === "up" ? "text-[#22C55E]" : movement === "down" ? "text-[#F87171]" : "text-zinc-500"}`}>
                     {movement === "up" ? "▲" : movement === "down" ? "▼" : "—"} {movement === "flat" ? "steady" : `${(idx % 6) + 1}`}
                   </div>

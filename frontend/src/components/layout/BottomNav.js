@@ -19,7 +19,7 @@ const BottomNav = ({ onOpenMore }) => {
               data-testid={testId}
               className={({ isActive }) =>
                 `flex flex-col items-center justify-center gap-1 py-2.5 text-[10.5px] font-medium transition-colors active:scale-[0.95] ${
-                  isActive ? "text-[#FACC15]" : "text-zinc-500 hover:text-zinc-300"
+                  isActive ? "text-[#8CFF2E]" : "text-zinc-500 hover:text-zinc-300"
                 }`
               }
             >
@@ -28,7 +28,7 @@ const BottomNav = ({ onOpenMore }) => {
                   <span
                     className={`flex items-center justify-center w-9 h-9 rounded-2xl transition-all ${
                       isActive
-                        ? "bg-[#FACC15]/15 border border-[#FACC15]/30 shadow-[0_0_14px_-4px_rgba(250,204,21,0.4)]"
+                        ? "bg-[#8CFF2E]/15 border border-[#8CFF2E]/30 shadow-[0_0_14px_-4px_rgba(140,255,46,0.4)]"
                         : "bg-transparent border border-transparent"
                     }`}
                   >
