@@ -319,6 +319,45 @@ async def seed_data():
         await db.co_owner_benefits.insert_many([dict(b) for b in CO_OWNER_BENEFITS_SEED])
     if await db.faqs.count_documents({}) == 0:
         await db.faqs.insert_many([dict(f) for f in FAQS_SEED])
+    # One-shot migration: upgrade legacy 5-step milestone docs to the new 12-step journey.
+    # We detect "legacy" by the absence of any new-only milestone IDs.
+    NEW_IDS = {"browse_properties", "share_referral", "save_property", "invite_friend", "friend_kyc", "join_community", "allocation_ready"}
+    legacy_docs = await db.user_milestones.find({"milestones.id": {"$nin": list(NEW_IDS)}}, {"_id": 0, "user_id": 1, "milestones": 1}).to_list(2000)
+    for doc in legacy_docs:
+        prev = {m["id"]: m for m in doc.get("milestones", [])}
+        # Preserve any milestone that was already completed in the legacy doc.
+        rebuilt = []
+        seed = [
+            ("join_waitlist", "Join Waitlist",            "You're officially in. Let's get you allocation-ready.",       "user-plus",    "auto"),
+            ("verify_mobile", "Verify Mobile",            "Add a number so we can reach you for time-sensitive slots.", "smartphone",   "manual"),
+            ("browse_properties", "Browse Dubai Properties", "Open any property to see the OneX selection framework.",  "building",     "auto"),
+            ("share_referral", "Share Your Referral Link", "Send your unique link to one friend (any channel).",         "share",        "auto"),
+            ("attend_webinar", "Attend a Webinar",        "Reduce investment anxiety with a 30-min expert session.",    "calendar",     "manual"),
+            ("save_property", "Save a Property",          "Bookmark a launch so we notify you on allocation day.",      "bookmark",     "auto"),
+            ("invite_friend", "Invite a Friend (signup)", "Your friend signs up through your link.",                    "user-check",   "auto"),
+            ("complete_kyc", "Complete KYC",              "Verify identity to become investment-ready.",                "id-card",      "manual"),
+            ("reserve_allocation", "Reserve Allocation Interest", "Tell us which kind of asset you'd commit to first.","pie-chart",    "manual"),
+            ("friend_kyc", "Friend Completes KYC",        "Your invitee verifies their identity too.",                  "shield-check", "auto"),
+            ("join_community", "Join Community Updates", "Like or save your first community post.",                    "message-square","auto"),
+            ("allocation_ready", "Allocation-Ready Co-Owner", "All systems go — you're at the top of the queue.",      "trophy",       "auto"),
+        ]
+        for mid, title, subtitle, icon, kind in seed:
+            was = prev.get(mid)
+            if was and was.get("status") == "completed":
+                rebuilt.append({**was, "title": title, "subtitle": subtitle, "icon": icon, "kind": kind})
+            else:
+                rebuilt.append({"id": mid, "title": title, "subtitle": subtitle, "status": "upcoming", "icon": icon, "kind": kind})
+        # Cascade: first non-completed step becomes pending.
+        seen_pending = False
+        for m in rebuilt:
+            if m["status"] == "completed":
+                continue
+            if not seen_pending:
+                m["status"] = "pending"
+                seen_pending = True
+            else:
+                m["status"] = "upcoming"
+        await db.user_milestones.update_one({"user_id": doc["user_id"]}, {"$set": {"milestones": rebuilt}})
     log.info("seed: complete")
 
 
@@ -361,14 +400,86 @@ def _make_referral_code(name: str) -> str:
 async def ensure_user_milestones(user_id: str):
     if await db.user_milestones.find_one({"user_id": user_id}):
         return
+    # 12-step gamified journey. Mix profile · property · referral · learn · commitment.
+    # `status` cascade is recomputed dynamically — only the first incomplete step is "pending".
     milestones = [
-        {"id": "join_waitlist", "title": "Join Waitlist", "subtitle": "You have successfully joined the waitlist.", "status": "completed", "icon": "user-plus", "completed_at": _now()},
-        {"id": "verify_mobile", "title": "Verify Mobile", "subtitle": "Complete mobile verification to unlock next steps.", "status": "pending", "icon": "smartphone"},
-        {"id": "complete_kyc", "title": "Complete KYC", "subtitle": "Verify your identity to become investment ready.", "status": "pending", "icon": "id-card"},
-        {"id": "attend_webinar", "title": "Attend Webinar", "subtitle": "Attend an upcoming webinar to learn more.", "status": "pending", "icon": "calendar"},
-        {"id": "reserve_allocation", "title": "Reserve Allocation Interest", "subtitle": "Reserve your allocation preference.", "status": "upcoming", "icon": "pie-chart"},
+        {"id": "join_waitlist",       "title": "Join Waitlist",            "subtitle": "You're officially in. Let's get you allocation-ready.",       "status": "completed", "icon": "user-plus",   "kind": "auto",   "completed_at": _now()},
+        {"id": "verify_mobile",       "title": "Verify Mobile",            "subtitle": "Add a number so we can reach you for time-sensitive slots.", "status": "pending",   "icon": "smartphone",  "kind": "manual"},
+        {"id": "browse_properties",   "title": "Browse Dubai Properties",  "subtitle": "Open any property to see the OneX selection framework.",     "status": "upcoming",  "icon": "building",    "kind": "auto"},
+        {"id": "share_referral",      "title": "Share Your Referral Link", "subtitle": "Send your unique link to one friend (any channel).",         "status": "upcoming",  "icon": "share",       "kind": "auto"},
+        {"id": "attend_webinar",      "title": "Attend a Webinar",         "subtitle": "Reduce investment anxiety with a 30-min expert session.",    "status": "upcoming",  "icon": "calendar",    "kind": "manual"},
+        {"id": "save_property",       "title": "Save a Property",          "subtitle": "Bookmark a launch so we notify you on allocation day.",      "status": "upcoming",  "icon": "bookmark",    "kind": "auto"},
+        {"id": "invite_friend",       "title": "Invite a Friend (signup)", "subtitle": "Your friend signs up through your link.",                    "status": "upcoming",  "icon": "user-check",  "kind": "auto"},
+        {"id": "complete_kyc",        "title": "Complete KYC",             "subtitle": "Verify identity to become investment-ready.",                "status": "upcoming",  "icon": "id-card",     "kind": "manual"},
+        {"id": "reserve_allocation",  "title": "Reserve Allocation Interest","subtitle": "Tell us which kind of asset you'd commit to first.",       "status": "upcoming",  "icon": "pie-chart",   "kind": "manual"},
+        {"id": "friend_kyc",          "title": "Friend Completes KYC",     "subtitle": "Your invitee verifies their identity too.",                  "status": "upcoming",  "icon": "shield-check","kind": "auto"},
+        {"id": "join_community",      "title": "Join Community Updates",   "subtitle": "Like or save your first community post.",                    "status": "upcoming",  "icon": "message-square","kind": "auto"},
+        {"id": "allocation_ready",    "title": "Allocation-Ready Co-Owner","subtitle": "All systems go — you're at the top of the queue.",          "status": "upcoming",  "icon": "trophy",      "kind": "auto"},
     ]
     await db.user_milestones.insert_one({"user_id": user_id, "milestones": milestones})
+
+
+async def auto_complete_data_milestones(user_id: str) -> bool:
+    """Mark data-driven milestones complete based on real activity. Returns True if
+    anything changed (so we re-cascade the queue afterwards)."""
+    doc = await db.user_milestones.find_one({"user_id": user_id})
+    if not doc:
+        return False
+    milestones = doc["milestones"]
+    changed = False
+
+    async def _have(coll: str, q: dict) -> bool:
+        return (await db[coll].count_documents(q)) > 0
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "phone": 1})
+    user_phone = (user or {}).get("phone")
+
+    referees = await db.referrals.find({"referrer_id": user_id}, {"_id": 0, "verified": 1, "kyc_completed": 1}).to_list(100)
+
+    checks = {
+        # verify_mobile auto-completes the moment a phone number is on file (mirrors the existing manual flow).
+        "verify_mobile":     bool(user_phone),
+        "browse_properties": await _have("property_views", {"user_id": user_id}),
+        "share_referral":    await _have("referral_shares", {"user_id": user_id}),
+        "save_property":     await _have("saved_properties", {"user_id": user_id}),
+        "invite_friend":     any(r.get("verified") for r in referees),
+        "friend_kyc":        any(r.get("kyc_completed") for r in referees),
+        "join_community":    (await _have("user_likes", {"user_id": user_id})) or (await _have("user_saves", {"user_id": user_id})),
+        # attend_webinar — auto if the user actually attended (not just registered).
+        "attend_webinar":    await _have("webinar_registrations", {"user_id": user_id, "attended": True}),
+    }
+
+    for m in milestones:
+        if m["status"] != "completed" and checks.get(m["id"]) is True:
+            m["status"] = "completed"
+            m["completed_at"] = _now()
+            changed = True
+            granted = MILESTONE_REWARDS.get(m["id"], 0)
+            if granted:
+                await grant_aed(user_id, granted)
+                await add_activity(user_id, "milestone", f"Completed: {m['title']}", granted)
+
+    # Final allocation_ready unlocks once every prior milestone is done.
+    prior = [m for m in milestones if m["id"] != "allocation_ready"]
+    final = next((m for m in milestones if m["id"] == "allocation_ready"), None)
+    if final and final["status"] != "completed" and all(p["status"] == "completed" for p in prior):
+        final["status"] = "completed"
+        final["completed_at"] = _now()
+        changed = True
+
+    # Cascade: ensure exactly one pending step (the first incomplete one).
+    if changed:
+        seen_pending = False
+        for m in milestones:
+            if m["status"] == "completed":
+                continue
+            if not seen_pending:
+                m["status"] = "pending"
+                seen_pending = True
+            else:
+                m["status"] = "upcoming"
+        await db.user_milestones.update_one({"user_id": user_id}, {"$set": {"milestones": milestones}})
+    return changed
 
 
 @api.post("/auth/session")
@@ -628,6 +739,9 @@ async def auth_email_verify(payload: EmailVerify, request: Request, response: Re
 # -------------------- Dashboard / progress --------------------
 @api.get("/dashboard")
 async def dashboard(user: CurrentUser):
+    # Recompute data-driven milestones first so the dashboard reflects reality.
+    await auto_complete_data_milestones(user["user_id"])
+    user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})  # refresh balance/tier
     ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]}, {"_id": 0})
     milestones = ms_doc["milestones"] if ms_doc else []
     completed = [m for m in milestones if m["status"] == "completed"]
@@ -687,6 +801,8 @@ async def dashboard(user: CurrentUser):
 
 @api.get("/progress")
 async def progress(user: CurrentUser):
+    await auto_complete_data_milestones(user["user_id"])
+    user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]}, {"_id": 0})
     milestones = ms_doc["milestones"] if ms_doc else []
     completed = [m for m in milestones if m["status"] == "completed"]
@@ -788,18 +904,32 @@ async def complete_milestone(payload: MilestoneAction, request: Request, backgro
 
 # -------------------- Milestone rewards --------------------
 MILESTONE_REWARDS = {
-    "verify_mobile": 25,
-    "complete_kyc": 50,
-    "attend_webinar": 25,
+    "verify_mobile":      25,
+    "browse_properties":  10,
+    "share_referral":     20,
+    "attend_webinar":     25,
+    "save_property":      15,
+    "invite_friend":      50,
+    "complete_kyc":       50,
     "reserve_allocation": 50,
+    "friend_kyc":        100,
+    "join_community":     10,
+    "allocation_ready":    0,
 }
 
 MILESTONE_TITLE = {
-    "join_waitlist": "Join Waitlist",
-    "verify_mobile": "Verify Mobile",
-    "complete_kyc": "Complete KYC",
-    "attend_webinar": "Attend Webinar",
-    "reserve_allocation": "Reserve Allocation",
+    "join_waitlist":      "Join Waitlist",
+    "verify_mobile":      "Verify Mobile",
+    "browse_properties":  "Browse Dubai Properties",
+    "share_referral":     "Share Your Referral Link",
+    "attend_webinar":     "Attend a Webinar",
+    "save_property":      "Save a Property",
+    "invite_friend":      "Invite a Friend",
+    "complete_kyc":       "Complete KYC",
+    "reserve_allocation": "Reserve Allocation Interest",
+    "friend_kyc":         "Friend Completes KYC",
+    "join_community":     "Join Community Updates",
+    "allocation_ready":   "Allocation-Ready Co-Owner",
 }
 
 
@@ -924,6 +1054,17 @@ async def save_property(payload: PropertyAction, user: CurrentUser):
         "created_at": _now(),
     })
     return {"ok": True, "saved": True}
+
+
+@api.post("/properties/view")
+async def log_property_view(payload: PropertyAction, user: CurrentUser):
+    """Record that a user opened a property detail (drives the 'Browse Dubai Properties' milestone)."""
+    await db.property_views.update_one(
+        {"user_id": user["user_id"], "property_id": payload.property_id},
+        {"$set": {"last_viewed_at": _now()}, "$inc": {"count": 1}, "$setOnInsert": {"created_at": _now()}},
+        upsert=True,
+    )
+    return {"ok": True}
 
 
 # -------------------- Allocation interests --------------------
@@ -1075,6 +1216,115 @@ async def remind_webinar(payload: WebinarAction, request: Request, background: B
     return {"ok": True, "message": "Reminder set — we'll email you before it starts."}
 
 
+class WaitlistJoin(BaseModel):
+    email: str
+    name: Optional[str] = None
+    ref: Optional[str] = None
+    source: Optional[str] = "framer"
+
+
+@api.post("/waitlist/join")
+async def waitlist_join(payload: WaitlistJoin, request: Request, background: BackgroundTasks):
+    """Public waitlist signup — designed to be embedded on the OneX Framer landing page.
+
+    Flow:
+      1. Email validated + dedup-checked.
+      2. Attribution: if `ref` is a valid code AND this email has never been attributed
+         before, credit the referrer +25 AED (waitlist tier — less than a full signup).
+      3. Confirmation email to the new signup.
+      4. Admin notification email to SUPPORT_INBOX (defaults to surya@onex.exchange).
+    """
+    email = (payload.email or "").strip().lower()
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    name = (payload.name or "").strip() or email.split("@")[0].replace(".", " ").title()
+    ref_code = (payload.ref or "").strip().lower() or None
+
+    # Dedupe — one waitlist row per email.
+    existing = await db.waitlist_signups.find_one({"email": email})
+    if existing:
+        return {"ok": True, "already": True, "message": "You're already on the waitlist — we'll be in touch soon."}
+
+    referrer = None
+    if ref_code:
+        referrer = await db.users.find_one({"referral_code": ref_code}, {"_id": 0})
+
+    waitlist_id = str(uuid.uuid4())
+    doc = {
+        "id": waitlist_id,
+        "email": email,
+        "name": name,
+        "ref_code": ref_code if referrer else None,
+        "referrer_id": referrer["user_id"] if referrer else None,
+        "source": payload.source or "framer",
+        "created_at": _now(),
+        "converted_user_id": None,
+    }
+    await db.waitlist_signups.insert_one(doc)
+
+    # Credit the referrer for a waitlist signup (smaller reward than a full signup).
+    if referrer:
+        await db.referrals.insert_one({
+            "id": str(uuid.uuid4()),
+            "referrer_id": referrer["user_id"],
+            "referee_id": None,            # not a full user yet — just an email
+            "referee_email": email,
+            "verified": False,
+            "kyc_completed": False,
+            "via": "waitlist",
+            "waitlist_id": waitlist_id,
+            "created_at": _now(),
+        })
+        await grant_aed(referrer["user_id"], 25)
+        await add_activity(referrer["user_id"], "referral", f"Waitlist signup · {name}", 25)
+        await _mark_click_converted(ref_code, request)
+
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    # Welcome email to the new signup.
+    background.add_task(
+        send_milestone_done,
+        email, name,
+        "You're on the OneX waitlist", 0, 0,
+        origin,
+    )
+    # Admin notification — reuse the support-inbound helper for a consistent format.
+    background.add_task(
+        send_support_inbound,
+        {"email": email, "name": name, "phone": None, "tier": "Waitlist", "aed_balance": 0},
+        f"New waitlist signup via {payload.source or 'framer'}"
+        + (f" — referred by {referrer['name']} ({referrer['email']})" if referrer else " — direct/no referrer"),
+        "waitlist",
+        origin,
+    )
+    if referrer:
+        background.add_task(
+            send_milestone_done,
+            referrer["email"], referrer["name"],
+            f"Friend joined waitlist · {name}", 25, referrer["aed_balance"] + 25, origin,
+        )
+    return {
+        "ok": True,
+        "already": False,
+        "referrer_name": referrer["name"] if referrer else None,
+        "message": f"Welcome to OneX Club, {name}! Check your inbox for next steps.",
+    }
+
+
+@api.get("/waitlist/info")
+async def waitlist_info(ref: Optional[str] = None):
+    """Public endpoint used by the Framer landing to greet the user with the referrer's name."""
+    if not ref:
+        return {"valid": False}
+    referrer = await db.users.find_one({"referral_code": ref.strip().lower()}, {"_id": 0, "name": 1, "picture": 1})
+    if not referrer:
+        return {"valid": False}
+    return {
+        "valid": True,
+        "referrer_name": referrer.get("name", "A OneX member"),
+        "referrer_avatar": referrer.get("picture"),
+    }
+
+
 # -------------------- Referrals --------------------
 REFERRAL_TTL_DAYS = 30  # a click is "active" for 30 days, then "expired" if no signup attribution happened.
 
@@ -1140,29 +1390,37 @@ async def get_referrals(user: CurrentUser):
     aed_earned = 0
     for r in raw:
         referee_id = r.get("referee_id")
+        is_waitlist_only = r.get("via") == "waitlist" and not referee_id
         # Fetch referee snapshot.
         referee = await db.users.find_one({"user_id": referee_id}, {"_id": 0, "email": 1, "name": 1, "tier": 1, "aed_balance": 1, "created_at": 1}) if referee_id else None
         kyc_done = bool(r.get("kyc_completed"))
         verified = bool(r.get("verified"))
         webinar_attended = bool(r.get("webinar_attended"))
         per_friend_aed = 0
-        if verified:
-            per_friend_aed += 50
-        if kyc_done:
-            per_friend_aed += 100
-        if webinar_attended:
-            per_friend_aed += 50
+        if is_waitlist_only:
+            per_friend_aed = 25  # waitlist reward
+            status = "waitlist"
+        else:
+            if verified:
+                per_friend_aed += 50
+            if kyc_done:
+                per_friend_aed += 100
+            if webinar_attended:
+                per_friend_aed += 50
+            status = "signed_up"
+            if kyc_done:
+                status = "kyc_completed"
+            elif verified:
+                status = "verified"
         aed_earned += per_friend_aed
-        status = "signed_up"
-        if kyc_done:
-            status = "kyc_completed"
-        elif verified:
-            status = "verified"
+        # Fallback name/email — waitlist rows store email + we derive a friendly name from it.
+        fallback_email = r.get("referee_email", "")
+        fallback_name = (referee or {}).get("name") or (fallback_email.split("@")[0].replace(".", " ").title() if fallback_email else "Friend")
         referees.append({
             "id": r.get("id"),
-            "name": (referee or {}).get("name") or "Friend",
-            "email": _email_partial((referee or {}).get("email") or r.get("referee_email", "")),
-            "tier": (referee or {}).get("tier") or "Cadet",
+            "name": fallback_name,
+            "email": _email_partial((referee or {}).get("email") or fallback_email),
+            "tier": (referee or {}).get("tier") or ("Waitlist" if is_waitlist_only else "Cadet"),
             "via": r.get("via", "link"),
             "joined_at": (referee or {}).get("created_at") or r.get("created_at"),
             "verified": verified,
@@ -1206,6 +1464,7 @@ async def get_referrals(user: CurrentUser):
             "clicks_total": len(clicks),
             "clicks_unique": len(unique_visitors),
             "signups": converted_signups,
+            "waitlist_signups": sum(1 for r in referees if r["status"] == "waitlist"),
             "verified": sum(1 for r in referees if r["verified"]),
             "kyc_completed": sum(1 for r in referees if r["kyc_completed"]),
             "pending": len(pending_clicks),

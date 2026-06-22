@@ -5,7 +5,7 @@ import { devDebug } from "@/lib/devDebug";
 import {
   Copy, Share2, MessageCircle, Send, Linkedin, Mail, UserPlus, CheckCircle2,
   Phone, ShieldCheck, Calendar, MousePointerClick, Clock, AlertCircle, Sparkles,
-  Eye,
+  Eye, Code, ExternalLink, Globe,
 } from "lucide-react";
 
 const channels = [
@@ -25,6 +25,7 @@ const STATUS_STYLES = {
   signed_up:      { color: "#60A5FA", bg: "#1E2A3E", label: "Signed up" },
   verified:       { color: "#22C55E", bg: "#1F3A2D", label: "Verified" },
   kyc_completed:  { color: "#8CFF2E", bg: "#1F3008", label: "KYC complete" },
+  waitlist:       { color: "#F472B6", bg: "#3A1E2D", label: "Joined waitlist" },
   pending:        { color: "#A78BFA", bg: "#241B3F", label: "Clicked · pending" },
   expired:        { color: "#71717A", bg: "#1E1F24", label: "Expired" },
 };
@@ -82,7 +83,8 @@ const InviteEarn = () => {
   ];
 
   const tabData = tab === "all" ? allEntries
-    : tab === "referees" ? allEntries.filter((e) => e.kind === "referee")
+    : tab === "referees" ? allEntries.filter((e) => e.kind === "referee" && e.status !== "waitlist")
+    : tab === "waitlist" ? allEntries.filter((e) => e.status === "waitlist")
     : tab === "pending" ? allEntries.filter((e) => e.status === "pending")
     : allEntries.filter((e) => e.status === "expired");
 
@@ -144,7 +146,7 @@ const InviteEarn = () => {
         {/* Right: missions */}
         <div className="onex-card p-6" data-testid="referral-missions-card">
           <h3 className="text-white text-[18px] font-semibold">Referral Missions</h3>
-          <p className="text-zinc-500 text-[12px]">Earn at each step of your friend's journey.</p>
+          <p className="text-zinc-500 text-[12px]">Earn at each step of your friend{"\u2019"}s journey.</p>
           <div className="mt-5 space-y-3">
             {data.missions.map((m) => {
               const Icon = missionIcons[m.id] || UserPlus;
@@ -175,6 +177,7 @@ const InviteEarn = () => {
           <div className="flex gap-2 flex-wrap" data-testid="referral-tabs">
             {[
               { id: "referees", label: `Signups · ${data.referees.length}` },
+              { id: "waitlist", label: `Waitlist · ${data.stats.waitlist_signups ?? 0}` },
               { id: "pending", label: `Pending · ${data.stats.pending}` },
               { id: "expired", label: `Expired · ${data.stats.expired}` },
               { id: "all", label: "All" },
@@ -237,8 +240,113 @@ const InviteEarn = () => {
           </div>
         )}
       </div>
+
+      {/* ────────── Framer embed: install on your landing page ────────── */}
+      <div className="onex-card mt-8 p-6 sm:p-7" data-testid="framer-embed-section">
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="w-12 h-12 rounded-2xl bg-[#A78BFA]/15 border border-[#A78BFA]/30 flex items-center justify-center"><Globe size={18} className="text-[#A78BFA]" /></div>
+          <div className="flex-1 min-w-[240px]">
+            <h2 className="text-white text-2xl font-display tracking-tight">Capture emails on your Framer site</h2>
+            <p className="text-zinc-500 text-[13px] mt-1 max-w-2xl leading-relaxed">
+              Drop this snippet into any Framer page (use the <span className="text-white">Embed</span> component → {"\u201C"}Code{"\u201D"}). It reads
+              <code className="text-[#8CFF2E] mx-1">?ref=</code>from the URL, asks the visitor for their email, and posts to OneX.
+              The visitor lands on your waitlist, you get the credit (+AED 25), and <span className="text-white">surya@onex.exchange</span> gets a copy.
+            </p>
+          </div>
+        </div>
+
+        {/* Two action buttons + copyable snippet */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5">
+          <button
+            type="button"
+            onClick={() => { const u = data.referral_link; navigator.clipboard?.writeText(u); toast.success("Referral link copied — paste into Framer as the button destination."); }}
+            data-testid="framer-copy-link"
+            className="onex-card-soft p-4 flex items-center justify-between hover:border-[#8CFF2E]/30 transition-all text-left"
+          >
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Your referral landing URL</div>
+              <div className="text-white text-[13px] mt-1 truncate font-mono">{data.referral_link}</div>
+            </div>
+            <Copy size={16} className="text-[#8CFF2E] flex-shrink-0 ml-3" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const snippet = buildFramerSnippet(data.referral_code);
+              navigator.clipboard?.writeText(snippet);
+              toast.success("Framer embed code copied to clipboard");
+            }}
+            data-testid="framer-copy-snippet"
+            className="onex-card-soft p-4 flex items-center justify-between hover:border-[#A78BFA]/30 transition-all text-left"
+          >
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Framer embed snippet</div>
+              <div className="text-white text-[13px] mt-1">Copy HTML+JS to paste into Framer</div>
+            </div>
+            <Code size={16} className="text-[#A78BFA] flex-shrink-0 ml-3" />
+          </button>
+        </div>
+
+        {/* Preview of what will be sent */}
+        <div className="mt-5 rounded-2xl border border-[#27272A] bg-[#0A0A0B] p-4 text-[12px] text-zinc-400 leading-relaxed">
+          <div className="flex items-center gap-2 text-[#8CFF2E] text-[11px] uppercase tracking-[0.16em] mb-2"><Sparkles size={11} /> What happens on submit</div>
+          <ol className="list-decimal list-inside space-y-1 text-zinc-300">
+            <li>Visitor{"\u2019"}s email is POSTed to <code className="text-[#8CFF2E]">/api/waitlist/join</code> with your referral code.</li>
+            <li>OneX records the signup → <span className="text-white">appears in the Waitlist tab above</span>.</li>
+            <li>You get <span className="text-[#8CFF2E]">+AED 25</span> credited instantly.</li>
+            <li>Welcome email goes to the visitor; admin notification goes to <span className="text-white">surya@onex.exchange</span>.</li>
+          </ol>
+          <a href={`${data.referral_link}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#A78BFA] text-[12px] mt-3 hover:underline">
+            Preview your shareable link <ExternalLink size={11} />
+          </a>
+        </div>
+      </div>
     </div>
   );
 };
+
+/** Returns a self-contained HTML+JS snippet that the user can paste into Framer's Embed block.
+ *  - Reads ?ref= from URL (falls back to the current user's code so the page works in isolation).
+ *  - Posts to /api/waitlist/join on submit.
+ *  - All styling matches the OneX dark/lime palette. */
+function buildFramerSnippet(fallbackCode) {
+  const API_BASE = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+  return `<!-- OneX Club Waitlist · paste into any Framer Embed (Code) block -->
+<div id="onex-wl" style="font-family:'Inter',system-ui,sans-serif;color:#fff;max-width:420px;margin:0 auto;padding:28px;border-radius:24px;background:#0F0F12;border:1px solid #27272A;box-shadow:0 30px 80px -20px rgba(140,255,46,0.15)">
+  <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8CFF2E">OneX Club · Waitlist</div>
+  <h3 style="font-size:24px;margin:8px 0 4px;line-height:1.2">Join the invitation-only co-ownership circle.</h3>
+  <p id="onex-wl-sub" style="font-size:13px;color:#A1A1AA;margin:0 0 18px">Drop your email — we'll email you next steps.</p>
+  <form id="onex-wl-form" style="display:flex;gap:8px">
+    <input id="onex-wl-email" type="email" required placeholder="you@example.com"
+      style="flex:1;padding:12px 14px;border-radius:12px;background:#15161A;border:1px solid #27272A;color:#fff;font-size:14px;outline:none" />
+    <button type="submit" id="onex-wl-btn"
+      style="padding:12px 18px;border-radius:12px;background:#8CFF2E;color:#0A0A0B;font-weight:600;border:0;cursor:pointer;font-size:14px">Join</button>
+  </form>
+  <div id="onex-wl-msg" style="font-size:12px;color:#22C55E;margin-top:12px;min-height:18px"></div>
+</div>
+<script>(function(){
+  var API="${API_BASE}/api";
+  var FALLBACK="${fallbackCode}";
+  var p=new URLSearchParams(location.search), ref=(p.get("ref")||FALLBACK||"").toLowerCase();
+  // Greet the visitor with the inviter's name when there's one.
+  fetch(API+"/waitlist/info?ref="+encodeURIComponent(ref)).then(function(r){return r.json()}).then(function(d){
+    if(d.valid){document.getElementById("onex-wl-sub").innerHTML="<b style='color:#fff'>"+d.referrer_name+"</b> invited you. Drop your email to claim your spot.";}
+  }).catch(function(){});
+  document.getElementById("onex-wl-form").addEventListener("submit", function(e){
+    e.preventDefault();
+    var email=document.getElementById("onex-wl-email").value.trim();
+    var btn=document.getElementById("onex-wl-btn"); btn.disabled=true; btn.textContent="Joining…";
+    fetch(API+"/waitlist/join",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({email:email,ref:ref,source:"framer"})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        document.getElementById("onex-wl-msg").textContent=d.message||"You're on the list!";
+        if(d.ok){document.getElementById("onex-wl-email").value=""; btn.textContent="Done ✓"; btn.style.background="#22C55E";}
+        else{btn.disabled=false; btn.textContent="Join";}
+      })
+      .catch(function(){document.getElementById("onex-wl-msg").style.color="#EF4444"; document.getElementById("onex-wl-msg").textContent="Something went wrong. Try again."; btn.disabled=false; btn.textContent="Join";});
+  });
+})();</script>`;
+}
 
 export default InviteEarn;

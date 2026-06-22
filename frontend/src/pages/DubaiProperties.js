@@ -17,7 +17,13 @@ const DubaiProperties = () => {
   const [category, setCategory] = useState("all");
   const [properties, setProperties] = useState([]);
 
-  const load = useCallback((cat = category) => api.get(`/properties${cat && cat !== "all" ? `?category=${cat}` : ""}`).then(({ data }) => setProperties(data.properties)), [category]);
+  const load = useCallback((cat = category) => api.get(`/properties${cat && cat !== "all" ? `?category=${cat}` : ""}`).then(({ data }) => {
+    setProperties(data.properties);
+    // Log the "browse properties" milestone trigger silently — first property is enough.
+    if (data.properties?.length) {
+      api.post("/properties/view", { property_id: data.properties[0].id }).catch(() => {});
+    }
+  }), [category]);
   useEffect(() => { load(category); }, [category, load]);
 
   const join = async (p) => {

@@ -9,10 +9,38 @@ import BrandMark from "@/components/common/BrandMark";
 import {
   ArrowLeft, Flag, UserPlus, Smartphone, IdCard, Calendar, PieChart,
   CheckCircle2, Gift, Headphones, ChevronDown, ChevronUp, ArrowRight,
-  Trophy, Crown,
+  Trophy, Crown, Building2, Share2, Bookmark, UserCheck, ShieldCheck,
+  MessageSquare, Lock, Zap,
 } from "lucide-react";
 
-const iconMap = { "user-plus": UserPlus, smartphone: Smartphone, "id-card": IdCard, calendar: Calendar, "pie-chart": PieChart };
+const iconMap = {
+  "user-plus": UserPlus, smartphone: Smartphone, "id-card": IdCard, calendar: Calendar, "pie-chart": PieChart,
+  building: Building2, share: Share2, bookmark: Bookmark, "user-check": UserCheck,
+  "shield-check": ShieldCheck, "message-square": MessageSquare, trophy: Trophy,
+};
+
+// Each auto-step deep-links into the page where the user can actually do the action.
+const AUTO_ROUTE = {
+  browse_properties: { label: "Browse Properties", route: "/properties" },
+  share_referral:    { label: "Open Invite & Earn", route: "/invite" },
+  save_property:     { label: "Browse Properties", route: "/properties" },
+  invite_friend:     { label: "Open Invite & Earn", route: "/invite" },
+  friend_kyc:        { label: "Open Invite & Earn", route: "/invite" },
+  join_community:    { label: "Open Community", route: "/community" },
+};
+
+// Manual-step CTAs that have a richer flow than just /progress/complete.
+const MANUAL_ROUTE = {
+  attend_webinar:    { label: "Browse Webinars",  route: "/webinars" },
+  reserve_allocation:{ label: "Pick Interests",   route: "/allocation-interests" },
+};
+
+// Per-step AED reward (mirrors backend MILESTONE_REWARDS).
+const STEP_REWARDS = {
+  verify_mobile: 25, browse_properties: 10, share_referral: 20, attend_webinar: 25,
+  save_property: 15, invite_friend: 50, complete_kyc: 50, reserve_allocation: 50,
+  friend_kyc: 100, join_community: 10, allocation_ready: 0,
+};
 
 const PROGRESS_RING_SIZE = 160;
 const PROGRESS_RING_STROKE = 10;
@@ -194,18 +222,33 @@ const MyProgress = () => {
               const Icon = iconMap[m.icon] || Flag;
               const open = expanded === m.id;
               const { color: statusColor, bg: statusBg, label: statusLabel } = STATUS_STYLES[m.status] || STATUS_STYLES.upcoming;
+              const reward = STEP_REWARDS[m.id] || 0;
+              const isLocked = m.status === "upcoming";
+              const linked = AUTO_ROUTE[m.id] || MANUAL_ROUTE[m.id];
               return (
-                <div key={m.id} className="flex gap-5 items-start mb-4 relative" data-testid={`milestone-${m.id}`}>
+                <div key={m.id} className={`flex gap-5 items-start mb-4 relative ${isLocked ? "opacity-65" : ""}`} data-testid={`milestone-${m.id}`}>
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-semibold z-10" style={{ background: statusBg, border: `1.5px solid ${statusColor}` }}>
-                    {m.status === "completed" ? <CheckCircle2 size={18} className="text-[#22C55E]" /> : <span style={{ color: statusColor }}>{idx + 1}</span>}
+                    {m.status === "completed"
+                      ? <CheckCircle2 size={18} className="text-[#22C55E]" />
+                      : isLocked
+                      ? <Lock size={14} style={{ color: statusColor }} />
+                      : <span style={{ color: statusColor }}>{idx + 1}</span>}
                   </div>
                   <div className="flex-1 onex-card-soft px-5 py-4">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
                       <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: statusBg, border: `1px solid ${statusColor}44` }}>
                         <Icon size={18} style={{ color: statusColor }} />
                       </div>
-                      <div className="flex-1">
-                        <div className="text-white text-[15px] font-medium">{m.title}</div>
+                      <div className="flex-1 min-w-[160px]">
+                        <div className="text-white text-[15px] font-medium flex items-center gap-2 flex-wrap">
+                          {m.title}
+                          {reward > 0 && (
+                            <span className="onex-pill bg-[#8CFF2E]/12 text-[#8CFF2E] border border-[#8CFF2E]/25 !text-[10px]">+AED {reward}</span>
+                          )}
+                          {m.kind === "auto" && m.status !== "completed" && (
+                            <span className="onex-pill bg-[#A78BFA]/15 text-[#A78BFA] !text-[10px]"><Zap size={9} /> Auto</span>
+                          )}
+                        </div>
                         <div className="text-zinc-500 text-[12px] mt-0.5">{m.subtitle}</div>
                       </div>
                       <span className="onex-pill" style={{ background: `${statusColor}22`, color: statusColor }}>{statusLabel}</span>
@@ -214,12 +257,26 @@ const MyProgress = () => {
                       </button>
                     </div>
                     {open && (
-                      <div className="mt-4 pt-4 border-t border-[#27272A] flex items-center justify-between fade-in">
-                        <div className="text-[13px] text-zinc-400">{m.completed_at ? `Completed ${new Date(m.completed_at).toLocaleDateString()}` : "Tap below to mark this step complete and earn AED."}</div>
-                        {m.status !== "completed" && (
-                          <button onClick={() => complete(m.id)} className="btn-gold !py-2 !px-5 text-[13px]" data-testid={`milestone-complete-${m.id}`}>
-                            Mark Complete <ArrowRight size={14} />
-                          </button>
+                      <div className="mt-4 pt-4 border-t border-[#27272A] flex items-center justify-between gap-3 flex-wrap fade-in">
+                        <div className="text-[13px] text-zinc-400 flex-1 min-w-[180px]">
+                          {m.status === "completed"
+                            ? (m.completed_at ? `Completed ${new Date(m.completed_at).toLocaleDateString()}` : "Completed")
+                            : isLocked
+                            ? "Locks open once the previous step is complete."
+                            : m.kind === "auto"
+                            ? "Auto-completes the moment you take the action below."
+                            : "Tap below to mark this step complete and earn AED."}
+                        </div>
+                        {m.status !== "completed" && !isLocked && (
+                          linked ? (
+                            <button onClick={() => navigate(linked.route)} className="btn-gold !py-2 !px-5 text-[13px]" data-testid={`milestone-go-${m.id}`}>
+                              {linked.label} <ArrowRight size={14} />
+                            </button>
+                          ) : (
+                            <button onClick={() => complete(m.id)} className="btn-gold !py-2 !px-5 text-[13px]" data-testid={`milestone-complete-${m.id}`}>
+                              Mark Complete <ArrowRight size={14} />
+                            </button>
+                          )
                         )}
                       </div>
                     )}
