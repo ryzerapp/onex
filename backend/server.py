@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import json
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -1239,16 +1240,38 @@ class WaitlistJoin(BaseModel):
 
 
 @api.post("/waitlist/join")
-async def waitlist_join(payload: WaitlistJoin, request: Request, background: BackgroundTasks):
+async def waitlist_join(request: Request, background: BackgroundTasks):
     """Public waitlist signup — designed to be embedded on the OneX Framer landing page.
+
+    Accepts the body as either application/json OR text/plain (the latter being the only
+    content-type browsers allow for cross-origin `mode:"no-cors"` fetches AND for
+    `navigator.sendBeacon`, both of which our Framer Code Override uses for resilience).
 
     Flow:
       1. Email validated + dedup-checked.
       2. Attribution: if `ref` is a valid code AND this email has never been attributed
          before, credit the referrer +25 AED (waitlist tier — less than a full signup).
       3. Confirmation email to the new signup.
-      4. Admin notification email to SUPPORT_INBOX (defaults to surya@onex.exchange).
+      4. Admin notification email to SUPPORT_INBOX.
     """
+    # Parse the body manually so we handle application/json AND text/plain (Framer no-cors / Beacon).
+    try:
+        raw = await request.body()
+        data: dict = json.loads(raw) if raw else {}
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+    try:
+        payload = WaitlistJoin(**data)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid waitlist payload: {e}")
+
+    # Diagnostic logging — surfaces every inbound waitlist hit (origin, source, ref) so we can
+    # spot silent CORS/network drops between Framer and the API without grepping for emails.
+    log.info(
+        "waitlist/join inbound origin=%s referer=%s source=%s ref=%s email=%s",
+        request.headers.get("origin"), request.headers.get("referer"),
+        payload.source, payload.ref, (payload.email or "")[:48],
+    )
     email = (payload.email or "").strip().lower()
     if "@" not in email or "." not in email.split("@")[-1]:
         raise HTTPException(status_code=400, detail="Please enter a valid email address.")
@@ -1346,6 +1369,22 @@ async def waitlist_info(ref: Optional[str] = None):
         "valid": True,
         "referrer_name": referrer.get("name", "A OneX member"),
         "referrer_avatar": referrer.get("picture"),
+    }
+
+
+@api.get("/waitlist/diag")
+async def waitlist_diag():
+    """Public diagnostic ping — lets the user verify from their Framer site console that the
+    Brevo + waitlist pipeline is reachable. Returns counts so a difference between two pings
+    proves a signup just happened."""
+    return {
+        "ok": True,
+        "endpoint": "/api/waitlist/join",
+        "method": "POST",
+        "expects_json": {"email": "string", "ref": "string?", "source": "string?"},
+        "signups_total": await db.waitlist_signups.count_documents({}),
+        "brevo_list_id": int(os.environ.get("BREVO_CONTACT_LIST_ID", "0")) or None,
+        "now": _now(),
     }
 
 
@@ -2071,7 +2110,11 @@ app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    # CRITICAL: cannot pair `allow_origins=["*"]` with `allow_credentials=True` — browsers
+    # spec-mandated to reject (e.g., Framer landing on www.onexassets.com → preview URL was
+    # silently dropping the body). `allow_origin_regex` echoes the actual Origin back so the
+    # combination is valid and Brevo / Framer / mobile-webview signups all work.
+    allow_origin_regex=".*",
     allow_methods=["*"],
     allow_headers=["*"],
 )

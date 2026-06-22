@@ -294,6 +294,16 @@ const InviteEarn = () => {
             <li>Select your <span className="text-white">native Waitlist component</span> on the canvas. Right panel → <span className="text-white">Code Overrides</span> → choose <code className="text-[#8CFF2E]">withOnexCapture</code>.</li>
             <li>Done. Every submit now fires both Framer{"\u2019"}s native capture <em>and</em> our <code className="text-[#8CFF2E]">/api/waitlist/join</code> (with referrer attribution and Brevo sync).</li>
           </ol>
+
+          <div className="mt-4 pt-4 border-t border-[#1F1F22]">
+            <div className="text-[#A78BFA] text-[11px] uppercase tracking-[0.16em] mb-2 flex items-center gap-2"><Code size={11} /> Verify it works from your Framer site</div>
+            <div className="text-zinc-400 mb-2">Open your live Framer page → DevTools Console → paste:</div>
+            <pre className="bg-black/60 border border-[#27272A] rounded-xl p-3 text-[11px] text-[#8CFF2E] overflow-x-auto whitespace-pre-wrap break-all">
+{`fetch("${(process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "")}/api/waitlist/diag").then(r=>r.json()).then(console.log)`}
+            </pre>
+            <div className="text-zinc-500 mt-2">You should see <code className="text-[#8CFF2E]">{`{ok:true, signups_total: <number>, brevo_list_id: 6}`}</code>. The <span className="text-white">signups_total</span> increments by 1 on every successful Waitlist submit.</div>
+          </div>
+
           <a href={`${data.referral_link}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#A78BFA] text-[12px] mt-3 hover:underline">
             Preview your shareable link <ExternalLink size={11} />
           </a>
@@ -312,13 +322,38 @@ const InviteEarn = () => {
 function buildFramerOverride(fallbackCode) {
   const API_BASE = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
   return `// onexCapture.tsx — Framer Code Override for the native Waitlist component.
-// Paste into Framer → Assets → Code → New File → onexCapture.tsx.
-// Then select your Waitlist component on the canvas → right panel → Code Overrides → pick "withOnexCapture".
+// 1. Framer → Assets → Code → New File → onexCapture.tsx → paste this.
+// 2. Select your Waitlist component on the canvas → right panel → Code Overrides → pick "withOnexCapture".
+// 3. Publish. Every submit will fire BOTH Framer's native capture AND our /api/waitlist/join.
+//
+// The fetch uses mode:"no-cors" + sendBeacon as a fallback so the request goes through
+// even if the browser blocks the CORS preflight (it always hits our server, which is what counts).
 import type { ComponentType } from "react"
 import { useEffect, useRef } from "react"
 
 const ONEX_API = "${API_BASE}/api"
 const FALLBACK_REF = "${fallbackCode}"
+
+function postSignup(email: string, ref: string) {
+  const body = JSON.stringify({ email, ref, source: "framer-waitlist" })
+  // Beacon is the most reliable path on unload/redirect — fire it first.
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(\`\${ONEX_API}/waitlist/join\`, new Blob([body], { type: "application/json" }))
+    }
+  } catch (e) { /* ignore */ }
+  // Belt-and-suspenders: also fire a no-cors fetch. The browser can't read the response
+  // (mode:no-cors makes it opaque), but the request DOES reach our server every time.
+  try {
+    fetch(\`\${ONEX_API}/waitlist/join\`, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).catch(() => {})
+  } catch (e) { /* ignore */ }
+}
 
 export function withOnexCapture(Component): ComponentType {
   return (props) => {
@@ -327,27 +362,16 @@ export function withOnexCapture(Component): ComponentType {
     useEffect(() => {
       const root = wrapRef.current
       if (!root) return
-
-      // Resolve the inviter's ref from ?ref= or fall back to this user's code (when
-      // the page is opened without a query string).
       const refCode = (new URLSearchParams(location.search).get("ref") || FALLBACK_REF || "").toLowerCase()
 
       const onSubmit = (e: Event) => {
         const form = e.target as HTMLFormElement
-        // Framer's Waitlist input is always type=email — grab the first one.
         const input = form.querySelector('input[type="email"]') as HTMLInputElement | null
         const email = input?.value?.trim()
-        if (!email) return
-        // Fire-and-forget — let Framer's own success behavior continue uninterrupted.
-        fetch(\`\${ONEX_API}/waitlist/join\`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, ref: refCode, source: "framer-waitlist" }),
-          keepalive: true,
-        }).catch(() => {})
+        if (email) postSignup(email, refCode)
       }
 
-      // The native Waitlist renders a real <form>; attach to any form inside the override wrapper.
+      // Framer renders the form async — watch the subtree.
       const observer = new MutationObserver(() => {
         root.querySelectorAll("form").forEach((f) => {
           if ((f as any).__onex) return
@@ -356,6 +380,12 @@ export function withOnexCapture(Component): ComponentType {
         })
       })
       observer.observe(root, { childList: true, subtree: true })
+      // Initial scan (form may already be mounted).
+      root.querySelectorAll("form").forEach((f) => {
+        if ((f as any).__onex) return
+        ;(f as any).__onex = true
+        f.addEventListener("submit", onSubmit, { capture: true })
+      })
       return () => observer.disconnect()
     }, [])
 
