@@ -152,6 +152,34 @@
 .lb-bar-bronze-glow { box-shadow: 0 0 30px -10px rgba(217, 119, 6, 0.45), inset 0 1px 0 rgba(255,255,255,0.05); }
 
 
+/* ────────────────────────────────────────────────────────────────────────
+   Mobile / native-app responsive layer
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* Block accidental horizontal scroll on phones. */
+html, body { overflow-x: hidden; max-width: 100vw; }
+
+/* Bottom-nav clearance so content never hides behind it. */
+@media (max-width: 1023px) {
+  .mobile-safe-bottom { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  /* Tighter typography on small screens to keep hero headings on a single line. */
+  h1.text-4xl, h1.text-5xl { font-size: clamp(28px, 8vw, 40px); line-height: 1.1; }
+  /* Pin the floating Emergent badge clear of the bottom nav. */
+  #emergent-badge { bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+
+/* Larger touch targets for primary buttons on mobile. */
+@media (max-width: 767px) {
+  .btn-gold, .btn-ghost { padding: 12px 18px; font-size: 13.5px; min-height: 44px; }
+}
+
+/* Prevent the iOS rubber-band background flash. */
+body { background-color: #0A0A0B; -webkit-tap-highlight-color: transparent; }
+
+/* Capacitor / Cordova compatibility: respect notch + home indicator. */
+.has-status-bar { padding-top: env(safe-area-inset-top); }
+
+
 [data-debug-wrapper="true"] { display: contents !important; }
 [data-debug-wrapper="true"] > * {
   margin: inherit; padding: inherit; column-gap: inherit; row-gap: inherit; gap: inherit;

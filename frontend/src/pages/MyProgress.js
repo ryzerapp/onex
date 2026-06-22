@@ -171,12 +171,12 @@ const MyProgress = () => {
           ].map((s) => {
             const Icon = s.icon;
             return (
-              <div key={s.label} className="text-center">
+              <div key={s.label} className="text-center min-w-0">
                 <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center" style={{ background: s.bg, border: `1px solid ${s.color}44` }}>
                   <Icon size={20} style={{ color: s.color }} />
                 </div>
-                <div className="mt-3 text-[20px] font-semibold text-white">{s.value}</div>
-                <div className="text-[12px] text-zinc-500 mt-1">{s.label}</div>
+                <div className="mt-3 text-[18px] sm:text-[20px] font-semibold text-white">{s.value}</div>
+                <div className="text-[11px] sm:text-[12px] text-zinc-500 mt-1 leading-tight">{s.label}</div>
               </div>
             );
           })}
