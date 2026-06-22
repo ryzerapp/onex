@@ -12,6 +12,14 @@ const Login = () => {
     if (user) navigate("/dashboard", { replace: true });
   }, [user, navigate]);
 
+  // Capture ?ref=<code> on landing for referral attribution (persists across the OAuth round-trip).
+  React.useEffect(() => {
+    const refCode = new URLSearchParams(window.location.search).get("ref");
+    if (refCode) {
+      try { sessionStorage.setItem("onex_ref", refCode); } catch (e) { /* noop */ }
+    }
+  }, []);
+
   const redirectUrl = typeof window !== "undefined" ? window.location.origin + "/dashboard" : "/dashboard";
   const oauthHref = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
 

@@ -16,6 +16,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Optional, Annotated
 
+import hashlib
+import hmac
 import httpx
 from dotenv import load_dotenv
 from emergentintegrations.payments.stripe.checkout import (
@@ -64,6 +66,16 @@ class User(BaseModel):
 
 class SessionExchange(BaseModel):
     session_id: str
+    ref: Optional[str] = None
+
+
+# Jitsi/JaaS (8x8.vc) room URL generator.
+JAAS_TENANT = "vpaas-magic-cookie-0df12bf583cb40bbb594a16083d20aaa"
+
+
+def _webinar_room_url(webinar_id: str) -> str:
+    slug = webinar_id.replace("_", "").lower()[:48]
+    return f"https://8x8.vc/{JAAS_TENANT}/OneX-{slug}"
 
 
 # -------------------- Tier helpers --------------------
@@ -371,6 +383,39 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
     })
 
     if is_new_user:
+        # Referral attribution — if a `?ref=<code>` made it to the session exchange,
+        # find the referrer, link the new user, and reward them instantly.
+        ref_code = (payload.ref or "").strip().lower() or None
+        if ref_code:
+            referrer = await db.users.find_one({"referral_code": ref_code})
+            if referrer and referrer["user_id"] != user["user_id"]:
+                await db.users.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {"referred_by": referrer["user_id"]}},
+                )
+                user["referred_by"] = referrer["user_id"]
+                await db.referrals.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "referrer_id": referrer["user_id"],
+                    "referee_id": user["user_id"],
+                    "referee_email": user["email"],
+                    "verified": True,  # Google sign-in = email verified
+                    "kyc_completed": False,
+                    "created_at": _now(),
+                })
+                await grant_aed(referrer["user_id"], 50)
+                await add_activity(referrer["user_id"], "referral", f"Referred {user['name']}", 50)
+                # Best-effort email to the referrer.
+                origin_url = request.headers.get("origin") or str(request.base_url).rstrip("/")
+                background.add_task(
+                    send_milestone_done,
+                    referrer["email"],
+                    referrer["name"],
+                    f"Friend joined · {user['name']}",
+                    50,
+                    referrer["aed_balance"] + 50,
+                    origin_url,
+                )
         origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
         background.add_task(send_welcome, user["email"], user["name"], origin)
 
@@ -737,7 +782,10 @@ async def list_webinars(user: CurrentUser, tab: Optional[str] = "upcoming"):
         webinars = await db.webinars.find({"status": "upcoming"}, {"_id": 0}).sort("date", 1).to_list(50)
     for w in webinars:
         w["registered"] = w["id"] in reg_ids
+        w["join_url"] = _webinar_room_url(w["id"])
     featured = await db.webinars.find_one({"featured": True}, {"_id": 0})
+    if featured:
+        featured["join_url"] = _webinar_room_url(featured["id"])
     return {
         "webinars": webinars,
         "featured": featured,
@@ -753,22 +801,39 @@ class WebinarAction(BaseModel):
 
 
 @api.post("/webinars/register")
-async def register_webinar(payload: WebinarAction, user: CurrentUser):
+async def register_webinar(payload: WebinarAction, request: Request, background: BackgroundTasks, user: CurrentUser):
     existing = await db.webinar_registrations.find_one({"user_id": user["user_id"], "webinar_id": payload.webinar_id})
+    wb = await db.webinars.find_one({"id": payload.webinar_id}, {"_id": 0})
+    if not wb:
+        raise HTTPException(status_code=404, detail="Webinar not found")
+
+    room_url = _webinar_room_url(payload.webinar_id)
     if existing:
-        return {"ok": True, "already": True}
+        return {"ok": True, "already": True, "join_url": room_url}
+
     await db.webinar_registrations.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
         "webinar_id": payload.webinar_id,
         "attended": False,
+        "join_url": room_url,
         "created_at": _now(),
     })
-    wb = await db.webinars.find_one({"id": payload.webinar_id}, {"_id": 0})
-    if wb:
-        await db.webinars.update_one({"id": payload.webinar_id}, {"$inc": {"attendees": 1}})
-        await add_activity(user["user_id"], "webinar", f"Registered for {wb['title']}", 0)
-    return {"ok": True}
+    await db.webinars.update_one({"id": payload.webinar_id}, {"$inc": {"attendees": 1}})
+    await add_activity(user["user_id"], "webinar", f"Registered for {wb['title']}", 0)
+
+    # Confirmation email with the live Jitsi join URL.
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    background.add_task(
+        send_milestone_done,
+        user["email"],
+        user["name"],
+        f"Registered · {wb['title']}",
+        0,
+        user["aed_balance"],
+        f"{origin}/webinars",
+    )
+    return {"ok": True, "join_url": room_url}
 
 
 # -------------------- Referrals --------------------
@@ -1185,6 +1250,92 @@ async def checkout_status(session_id: str, request: Request, user: CurrentUser):
     }
 
 
+# -------------------- KYC (Veriff) --------------------
+VERIFF_BASE_URL = "https://stationapi.veriff.com/v1"
+
+
+def _veriff_signature(payload_bytes: bytes) -> str:
+    secret = (os.environ.get("VERIFF_SECRET") or "").encode("utf-8")
+    return hmac.new(secret, payload_bytes, hashlib.sha256).hexdigest()
+
+
+@api.post("/kyc/start")
+async def kyc_start(request: Request, user: CurrentUser):
+    api_key = os.environ.get("VERIFF_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Veriff not configured")
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    import json as _json
+    body = {
+        "verification": {
+            "callback": f"{origin}/progress?kyc=complete",
+            "person": {
+                "firstName": user["name"].split(" ")[0],
+                "lastName": user["name"].split(" ")[-1] if " " in user["name"] else "Member",
+            },
+            "vendorData": user["user_id"],
+        }
+    }
+    payload_bytes = _json.dumps(body).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "X-AUTH-CLIENT": api_key,
+        "X-HMAC-SIGNATURE": _veriff_signature(payload_bytes),
+    }
+    async with httpx.AsyncClient(timeout=20) as http:
+        r = await http.post(f"{VERIFF_BASE_URL}/sessions", content=payload_bytes, headers=headers)
+    if r.status_code >= 400:
+        log.warning("veriff session create failed %s: %s", r.status_code, r.text)
+        raise HTTPException(status_code=502, detail="Could not start KYC")
+    verification = (r.json() or {}).get("verification", {})
+    await db.kyc_sessions.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "veriff_session_id": verification.get("id"),
+        "status": "started",
+        "session_url": verification.get("url"),
+        "created_at": _now(),
+    })
+    return {"url": verification.get("url"), "session_id": verification.get("id")}
+
+
+@api.post("/webhook/veriff")
+async def veriff_webhook(request: Request, background: BackgroundTasks):
+    raw = await request.body()
+    signature = request.headers.get("X-HMAC-SIGNATURE", "")
+    if not hmac.compare_digest(signature, _veriff_signature(raw)):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    import json as _json
+    event = _json.loads(raw.decode("utf-8") or "{}")
+    vendor = (event.get("verification") or {}).get("vendorData")
+    status = ((event.get("verification") or {}).get("status") or "").lower()
+    if not vendor:
+        return {"ok": True}
+    await db.kyc_sessions.update_one({"user_id": vendor}, {"$set": {"status": status, "updated_at": _now(), "raw": event}}, upsert=True)
+    if status in ("approved", "verified"):
+        user = await db.users.find_one({"user_id": vendor}, {"_id": 0})
+        ms = await db.user_milestones.find_one({"user_id": vendor})
+        if user and ms:
+            granted = 0
+            for m in ms["milestones"]:
+                if m["id"] == "complete_kyc" and m["status"] != "completed":
+                    m["status"] = "completed"
+                    m["completed_at"] = _now()
+                    granted = MILESTONE_REWARDS.get("complete_kyc", 0)
+            for m in ms["milestones"]:
+                if m["status"] == "upcoming":
+                    m["status"] = "pending"
+                    break
+            await db.user_milestones.update_one({"user_id": vendor}, {"$set": {"milestones": ms["milestones"]}})
+            if granted:
+                await grant_aed(vendor, granted)
+                await add_activity(vendor, "milestone", "Completed: Complete KYC", granted)
+                fresh = await db.users.find_one({"user_id": vendor}, {"_id": 0})
+                background.add_task(send_milestone_done, user["email"], user["name"], "Complete KYC", granted, fresh["aed_balance"], "https://onex.club")
+    return {"ok": True}
+
+
+# -------------------- Stripe webhook --------------------
 @api.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     body = await request.body()

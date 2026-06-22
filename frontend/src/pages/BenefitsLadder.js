@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import ProgressRing from "@/components/common/ProgressRing";
 import TopUpModal, { POLL_INTERVAL_MS, MAX_POLLS } from "@/components/payments/TopUpModal";
+import LevelDetailModal from "@/components/levels/LevelDetailModal";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   User, Lock, ArrowRight, CheckCircle2, Headphones, Camera, ShieldCheck, Home as HomeIcon,
@@ -23,6 +24,7 @@ const BenefitsLadder = () => {
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [topupOpen, setTopupOpen] = useState(false);
+  const [activeTier, setActiveTier] = useState(null);
   const [pollState, setPollState] = useState(null); // null | "polling" | "success" | "expired"
 
   const load = useCallback(() => api.get("/benefits-ladder").then(({ data }) => setData(data)), []);
@@ -129,18 +131,18 @@ const BenefitsLadder = () => {
                 const isCurrent = balance >= t.threshold && (idx + 1 === data.tiers.length || balance < data.tiers[idx + 1].threshold);
                 const unlocked = balance >= t.threshold;
                 return (
-                  <div key={t.level} className="text-center relative" data-testid={`tier-${t.name.replace(/\s+/g, "-").toLowerCase()}`}>
+                  <button key={t.level} onClick={() => setActiveTier(t)} className="text-center relative group" data-testid={`tier-${t.name.replace(/\s+/g, "-").toLowerCase()}`}>
                     {idx < data.tiers.length - 1 && (
                       <div className={`hidden sm:block absolute top-[34px] left-[55%] right-[-45%] h-px ${unlocked ? "bg-[#FACC15]" : "bg-[#27272A]"}`} />
                     )}
                     <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-2">Level {t.level}</div>
-                    <div className={`relative w-16 h-16 rounded-full mx-auto flex items-center justify-center ${unlocked ? "onex-gold-fill onex-glow-gold" : "bg-[#15161A] border border-[#27272A] text-zinc-500"}`}>
+                    <div className={`relative w-16 h-16 rounded-full mx-auto flex items-center justify-center group-hover:scale-105 transition-transform ${unlocked ? "onex-gold-fill onex-glow-gold" : "bg-[#15161A] border border-[#27272A] text-zinc-500"}`}>
                       {unlocked ? <User size={20} /> : <Lock size={18} />}
                     </div>
                     <div className="mt-3 text-[10px] uppercase tracking-[0.15em] text-zinc-500">Level {t.level}</div>
                     <div className={`text-[13px] font-medium leading-tight mt-1 ${isCurrent ? "text-[#FACC15]" : "text-white"}`}>{t.name}</div>
                     <div className="onex-pill mt-2 bg-[#1E1F24] text-zinc-300">AED {t.threshold.toLocaleString()}</div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -280,6 +282,16 @@ const BenefitsLadder = () => {
         </div>
       </div>
       <TopUpModal open={topupOpen} onClose={() => setTopupOpen(false)} />
+      <LevelDetailModal
+        tier={activeTier}
+        currentBalance={balance}
+        onClose={() => setActiveTier(null)}
+        onAction={(a) => {
+          setActiveTier(null);
+          if (a.route.endsWith("#topup")) { setTopupOpen(true); return; }
+          navigate(a.route);
+        }}
+      />
     </div>
   );
 };

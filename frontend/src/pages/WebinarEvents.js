@@ -13,6 +13,13 @@ const WebinarCardAction = ({ webinar: w, onRegister }) => {
   if (w.status === "recorded") {
     return <button className="w-full btn-ghost" data-testid={`webinar-watch-${w.id}`}><Play size={14} /> Watch Recording</button>;
   }
+  if (w.registered && w.join_url) {
+    return (
+      <a href={w.join_url} target="_blank" rel="noreferrer" data-testid={`webinar-join-${w.id}`} className="w-full btn-gold">
+        Join Live <ArrowRight size={14} />
+      </a>
+    );
+  }
   if (w.registered) {
     return <button disabled className="w-full btn-ghost border-[#22C55E]/40 text-[#22C55E]" data-testid={`webinar-registered-${w.id}`}><Check size={14} /> Registered</button>;
   }

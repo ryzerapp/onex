@@ -106,6 +106,13 @@ const MyProgress = () => {
 
   const complete = async (id) => {
     try {
+      // KYC milestone has a dedicated Veriff flow — redirect to the hosted verification.
+      if (id === "complete_kyc") {
+        try {
+          const { data: kyc } = await api.post("/kyc/start");
+          if (kyc?.url) { window.location.href = kyc.url; return; }
+        } catch (e) { /* fall through to manual mark-complete */ }
+      }
       const { data: r } = await api.post("/progress/complete", { milestone_id: id });
       toast.success(r.granted ? `+AED ${r.granted} added to your balance` : "Step marked complete");
       load();
