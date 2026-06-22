@@ -76,7 +76,7 @@ const Sidebar = () => {
           )}
           <div className="text-left">
             <div className="text-[14px] font-medium text-white leading-tight">{user?.name?.split(" ")[0] || "Member"}</div>
-            <div className="text-[11px] text-zinc-500">{user?.tier || "Cadet"} Tier</div>
+            <div className="text-[11px] text-zinc-500">{user?.tier || "Member"} Tier</div>
           </div>
         </div>
         <ChevronDown size={14} className="text-zinc-500" />

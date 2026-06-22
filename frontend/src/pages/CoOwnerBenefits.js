@@ -6,10 +6,10 @@ import LevelDetailModal from "@/components/levels/LevelDetailModal";
 
 /** Tier metadata. Order matters: index 0 = lowest, 3 = highest. */
 const TIERS = [
-  { name: "Member",       level: 1, threshold: 500,   icon: Star,    accent: "#60A5FA", tagline: "You're in. The gateway into OneX co-ownership.",              lifestyle: "Early-access perks · curated property briefings · founding-circle pricing." },
-  { name: "Insider",      level: 2, threshold: 2500,  icon: Diamond, accent: "#A78BFA", tagline: "Front-of-line allocation across every launch.",                lifestyle: "Chauffeured airport pickup · executive Q&As · 7-day priority window before public." },
-  { name: "Inner Circle", level: 3, threshold: 5000,  icon: Crown,   accent: "#8CFF2E", tagline: "An intimate community of high-conviction partners.",            lifestyle: "Annual stays at OneX properties · founder briefings · invite-only assets." },
-  { name: "Founder",      level: 4, threshold: 10000, icon: Trophy,  accent: "#F472B6", tagline: "Help shape the next decade of OneX.",                           lifestyle: "Dedicated relationship manager · advisory council seat · co-ownership of flagship assets." },
+  { name: "Member",    level: 1, threshold: 500,   icon: Star,    accent: "#60A5FA", tagline: "You're in. The gateway into OneX co-ownership.",              lifestyle: "Early-access perks · curated property briefings · founding-circle pricing." },
+  { name: "Insider",   level: 2, threshold: 2500,  icon: Diamond, accent: "#A78BFA", tagline: "Front-of-line allocation across every launch.",                lifestyle: "Chauffeured airport pickup · executive Q&As · 7-day priority window before public." },
+  { name: "Co-Owner",  level: 3, threshold: 5000,  icon: Crown,   accent: "#8CFF2E", tagline: "An intimate community of high-conviction partners.",           lifestyle: "Annual stays at OneX properties · founder briefings · invite-only assets." },
+  { name: "Pro-Owner", level: 4, threshold: 10000, icon: Trophy,  accent: "#F472B6", tagline: "Help shape the next decade of OneX.",                          lifestyle: "Dedicated relationship manager · advisory council seat · co-ownership of flagship assets." },
 ];
 
 const fmtAED = (n) => `AED ${Math.round(n).toLocaleString()}`;
@@ -95,7 +95,7 @@ const CoOwnerBenefits = () => {
               Every AED you earn moves you closer to membership perks that feel less like a programme and more like a private circle.
               {currentTier
                 ? <> You{"\u2019"}re currently a <span className="text-white font-medium">{currentTier.name}</span>{nextTier ? <> — {fmtAED(nextTier.threshold - balance)} from <span className="text-white font-medium">{nextTier.name}</span>.</> : <> — the highest tier.</>}</>
-                : <> Reach <span className="text-white font-medium">Co-Owner Member</span> at {fmtAED(500)} to unlock your first benefits.</>}
+                : <> Reach <span className="text-white font-medium">Member</span> at {fmtAED(500)} to unlock your first benefits.</>}
             </p>
 
             <div className="flex flex-wrap gap-3 mt-7">
@@ -122,7 +122,7 @@ const CoOwnerBenefits = () => {
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-[#27272A] bg-[#15161A] p-3.5">
                   <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Tier</div>
-                  <div className="text-white text-[15px] font-semibold mt-1 leading-tight">{currentTier?.name || "Cadet"}</div>
+                  <div className="text-white text-[15px] font-semibold mt-1 leading-tight">{currentTier?.name || "Member"}</div>
                 </div>
                 <div className="rounded-2xl border border-[#27272A] bg-[#15161A] p-3.5">
                   <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Benefits Active</div>

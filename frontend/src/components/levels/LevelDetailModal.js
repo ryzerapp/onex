@@ -7,11 +7,11 @@ import { X, Lock, Sparkles, Calendar, UserPlus, ShieldCheck, Wallet, Building2, 
  */
 
 const TIER_DETAILS = {
-  "Co-Owner Member": {
+  "Member": {
     icon: Sparkles,
     color: "#8CFF2E",
     headline: "Your first access pass.",
-    why: "The moment you unlock Co-Owner Member, every future Dubai launch opens to you 24 hours earlier than the public waitlist.",
+    why: "The moment you unlock Member, every future Dubai launch opens to you 24 hours earlier than the public waitlist.",
     benefits: [
       "24-hour early window on every property launch",
       "Exclusive webinars with the OneX investment desk",
@@ -24,11 +24,11 @@ const TIER_DETAILS = {
       { icon: Wallet, title: "Top up AED Balance", aed: 250, route: "/benefits-ladder#topup" },
     ],
   },
-  "Priority Co-Owner": {
+  "Insider": {
     icon: Sparkles,
     color: "#8CFF2E",
     headline: "Priority allocation. Closed-door briefings.",
-    why: "Priority members allocate first, on better pricing, with direct access to OneX leadership.",
+    why: "Insiders allocate first, on better pricing, with direct access to OneX leadership.",
     benefits: [
       "24-hour priority access to new allocations",
       "Executive Q&A sessions with the founding team",
@@ -42,11 +42,11 @@ const TIER_DETAILS = {
       { icon: Building2, title: "Reserve allocation interest", aed: 50, route: "/allocation-interests" },
     ],
   },
-  "Co-Owner Circle": {
+  "Co-Owner": {
     icon: Sparkles,
     color: "#8CFF2E",
-    headline: "The Circle — hospitality meets ownership.",
-    why: "Members of the Circle enjoy concierge-grade experiences on top of every allocation benefit.",
+    headline: "Hospitality meets ownership.",
+    why: "Co-Owners enjoy concierge-grade experiences on top of every allocation benefit.",
     benefits: [
       "Complimentary airport transfers in Dubai",
       "Two complimentary annual stays in OneX assets",
@@ -59,16 +59,16 @@ const TIER_DETAILS = {
       { icon: Wallet, title: "Top up to AED 5,000", aed: 3000, route: "/benefits-ladder#topup" },
     ],
   },
-  "Elite Co-Owner": {
+  "Pro-Owner": {
     icon: Sparkles,
     color: "#8CFF2E",
     headline: "The top tier. Architect the OneX roadmap.",
-    why: "Elite members have a seat at the table — and a relationship manager who never sleeps.",
+    why: "Pro-Owners have a seat at the table — and a relationship manager who never sleeps.",
     benefits: [
       "Dedicated relationship manager (24/7)",
       "Advisory council access — shape OneX's roadmap",
       "Invitation-only events with co-investors",
-      "All Circle benefits, amplified",
+      "All Co-Owner benefits, amplified",
     ],
     actions: [
       { icon: UserPlus, title: "Reach 20 verified referrals", aed: 1000, route: "/invite" },

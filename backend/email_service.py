@@ -44,11 +44,18 @@ def _shell(title: str, intro: str, body_html: str, cta_label: Optional[str] = No
         <tr><td style="padding:32px 32px 16px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
             <td width="48" style="width:48px;line-height:0;font-size:0;mso-line-height-rule:exactly;">
-              <img src="https://www.onexassets.com/brand/onex-circle.png"
-                   alt="OneX"
-                   width="48" height="48"
-                   border="0"
-                   style="display:block;width:48px;height:48px;border-radius:50%;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;background:#0A0A0B;" />
+              <!-- Bulletproof CSS brand mark: always renders, never blocked by image proxies. -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="48" style="width:48px;border-collapse:separate;">
+                <tr>
+                  <td align="center" valign="middle" width="48" height="48"
+                      style="width:48px;height:48px;background:#8CFF2E;border-radius:24px;
+                             font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:18px;font-weight:700;line-height:48px;color:#0A0A0B;
+                             letter-spacing:-0.02em;mso-line-height-rule:exactly;">
+                    1X
+                  </td>
+                </tr>
+              </table>
             </td>
             <td style="padding-left:12px;vertical-align:middle;">
               <div style="color:{_TEXT};font-size:16px;font-weight:600;line-height:1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">OneX <span style="color:{_BRAND_GOLD};">Club</span></div>
@@ -216,7 +223,7 @@ async def send_support_inbound(user: dict, message: str, channel: str, app_url: 
     support_to = os.environ.get("SUPPORT_INBOX", "surya@onex.exchange")
     name = user.get("name") or user.get("email") or "Member"
     phone = user.get("phone") or "—"
-    tier = user.get("tier") or "Cadet"
+    tier = user.get("tier") or "Member"
     balance = user.get("aed_balance", 0)
     phone_html = (f' · or call <span style="color:{_TEXT};">{phone}</span>') if phone != "—" else ""
     body = f"""

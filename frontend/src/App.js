@@ -19,6 +19,7 @@ import CommunityUpdates from "@/pages/CommunityUpdates";
 import CoOwnerBenefits from "@/pages/CoOwnerBenefits";
 import SupportCenter from "@/pages/SupportCenter";
 import Settings from "@/pages/Settings";
+import Activity from "@/pages/Activity";
 
 const AppRouter = () => {
   const location = useLocation();
@@ -44,6 +45,7 @@ const AppRouter = () => {
         <Route path="/co-owner-benefits" element={<CoOwnerBenefits />} />
         <Route path="/support" element={<SupportCenter />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/activity" element={<Activity />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

@@ -53,7 +53,7 @@ const MobileDrawer = ({ open, onClose }) => {
             )}
             <div className="leading-tight">
               <div className="text-white text-[15px] font-medium">{user?.name || "Member"}</div>
-              <div className="text-[11px] text-zinc-500">{user?.tier || "Cadet"} Tier</div>
+              <div className="text-[11px] text-zinc-500">{user?.tier || "Member"} Tier</div>
             </div>
           </div>
           <button

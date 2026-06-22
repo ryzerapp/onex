@@ -284,7 +284,7 @@ const Dashboard = () => {
         <div>
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-display tracking-tight text-white">Recent Activity</h2>
-            <button data-testid="recent-activity-view-all" className="text-[12px] text-zinc-400 hover:text-white flex items-center gap-1">View All <ChevronRight size={12} /></button>
+            <button onClick={() => navigate("/activity")} data-testid="recent-activity-view-all" className="text-[12px] text-zinc-400 hover:text-white flex items-center gap-1">View All <ChevronRight size={12} /></button>
           </div>
           <div className="onex-card-soft p-2 mt-5 divide-y divide-[#27272A]">
             {(recent_activity?.length ? recent_activity : [{ id: "x", kind: "welcome", title: "Welcome to OneX Club", reward: 100, created_at: new Date().toISOString() }]).slice(0, 5).map((a) => (

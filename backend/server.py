@@ -110,17 +110,17 @@ def _webinar_room_url(webinar_id: str) -> str:
 
 
 # -------------------- Tier helpers --------------------
+# Canonical 4-tier ladder. "Member" is also the default label for any balance < 500.
+# Order: Member (500) → Insider (2500) → Co-Owner (5000) → Pro-Owner (10000).
 TIERS = [
-    {"name": "Insider", "threshold": 500, "key": "co_owner_member"},
-    {"name": "Partner", "threshold": 2500, "key": "priority"},
-    {"name": "Inner Circle", "threshold": 5000, "key": "circle"},
-    {"name": "Founder", "threshold": 10000, "key": "elite"},
+    {"name": "Member",    "threshold": 500,   "key": "member"},
+    {"name": "Insider",   "threshold": 2500,  "key": "insider"},
+    {"name": "Co-Owner",  "threshold": 5000,  "key": "co_owner"},
+    {"name": "Pro-Owner", "threshold": 10000, "key": "pro_owner"},
 ]
 
 
 def compute_tier(balance: int) -> str:
-    if balance < 500:
-        return "Member"
     name = "Member"
     for t in TIERS:
         if balance >= t["threshold"]:
@@ -132,7 +132,7 @@ def next_tier_info(balance: int):
     for t in TIERS:
         if balance < t["threshold"]:
             return {"name": t["name"], "threshold": t["threshold"], "remaining": t["threshold"] - balance}
-    return {"name": "Founder", "threshold": 10000, "remaining": 0}
+    return {"name": "Pro-Owner", "threshold": 10000, "remaining": 0}
 
 
 # -------------------- Auth helpers --------------------
@@ -272,24 +272,24 @@ UPDATES_SEED = [
 ]
 
 LEADERBOARD_SEED = [
-    {"name": "Hassan Al-Mansouri", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 8420, "referrals": 38, "tier": "Inner Circle"},
-    {"name": "Priya Nair", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 6210, "referrals": 27, "tier": "Inner Circle"},
-    {"name": "Rahul Mehta", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 4980, "referrals": 19, "tier": "Partner"},
-    {"name": "Sarah Lim", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 3420, "referrals": 14, "tier": "Partner"},
-    {"name": "Omar Khan", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2840, "referrals": 11, "tier": "Partner"},
-    {"name": "Maya Iyer", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2110, "referrals": 9, "tier": "Partner"},
-    {"name": "Daniel Park", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1685, "referrals": 7, "tier": "Insider"},
-    {"name": "Anaya Sharma", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1240, "referrals": 5, "tier": "Insider"},
+    {"name": "Hassan Al-Mansouri", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 8420, "referrals": 38, "tier": "Co-Owner"},
+    {"name": "Priya Nair", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 6210, "referrals": 27, "tier": "Co-Owner"},
+    {"name": "Rahul Mehta", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 4980, "referrals": 19, "tier": "Insider"},
+    {"name": "Sarah Lim", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 3420, "referrals": 14, "tier": "Insider"},
+    {"name": "Omar Khan", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2840, "referrals": 11, "tier": "Insider"},
+    {"name": "Maya Iyer", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2110, "referrals": 9, "tier": "Member"},
+    {"name": "Daniel Park", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1685, "referrals": 7, "tier": "Member"},
+    {"name": "Anaya Sharma", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1240, "referrals": 5, "tier": "Member"},
 ]
 
 CO_OWNER_BENEFITS_SEED = [
-    {"id": "ben_priority_alloc", "title": "Priority Allocation Access", "description": "24-hour early window on every new property launch.", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Insider", "unlock_threshold": 500},
-    {"id": "ben_executive_qa", "title": "Executive Q&A Sessions", "description": "Monthly closed-door sessions with the OneX leadership.", "image": "https://images.pexels.com/photos/5778470/pexels-photo-5778470.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Partner", "unlock_threshold": 2500},
-    {"id": "ben_airport_transfer", "title": "Complimentary Airport Transfers", "description": "Chauffeured airport pickup on every Dubai visit.", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Partner", "unlock_threshold": 2500},
-    {"id": "ben_founder_briefing", "title": "Private Founder Briefings", "description": "Invite-only briefings with founders ahead of every launch.", "image": "https://images.unsplash.com/photo-1661354421565-74ffd9650918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzgxMzAxOTAxfDA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Inner Circle", "unlock_threshold": 5000},
-    {"id": "ben_annual_stay", "title": "Complimentary Annual Stays", "description": "Two nights every year in your favorite OneX asset.", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Inner Circle", "unlock_threshold": 5000},
-    {"id": "ben_relationship_manager", "title": "Dedicated Relationship Manager", "description": "A senior OneX advisor on call, anytime.", "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Founder", "unlock_threshold": 10000},
-    {"id": "ben_advisory_council", "title": "Advisory Council Access", "description": "Help shape the OneX roadmap as part of our advisory council.", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Founder", "unlock_threshold": 10000},
+    {"id": "ben_priority_alloc", "title": "Priority Allocation Access", "description": "24-hour early window on every new property launch.", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Member", "unlock_threshold": 500},
+    {"id": "ben_executive_qa", "title": "Executive Q&A Sessions", "description": "Monthly closed-door sessions with the OneX leadership.", "image": "https://images.pexels.com/photos/5778470/pexels-photo-5778470.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Insider", "unlock_threshold": 2500},
+    {"id": "ben_airport_transfer", "title": "Complimentary Airport Transfers", "description": "Chauffeured airport pickup on every Dubai visit.", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Insider", "unlock_threshold": 2500},
+    {"id": "ben_founder_briefing", "title": "Private Founder Briefings", "description": "Invite-only briefings with founders ahead of every launch.", "image": "https://images.unsplash.com/photo-1661354421565-74ffd9650918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzgxMzAxOTAxfDA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Co-Owner", "unlock_threshold": 5000},
+    {"id": "ben_annual_stay", "title": "Complimentary Annual Stays", "description": "Two nights every year in your favorite OneX asset.", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Co-Owner", "unlock_threshold": 5000},
+    {"id": "ben_relationship_manager", "title": "Dedicated Relationship Manager", "description": "A senior OneX advisor on call, anytime.", "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Pro-Owner", "unlock_threshold": 10000},
+    {"id": "ben_advisory_council", "title": "Advisory Council Access", "description": "Help shape the OneX roadmap as part of our advisory council.", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Pro-Owner", "unlock_threshold": 10000},
 ]
 
 FAQS_SEED = [
@@ -319,6 +319,35 @@ async def seed_data():
         await db.leaderboard_seed.insert_many([dict(lb) for lb in LEADERBOARD_SEED])
     if await db.co_owner_benefits.count_documents({}) == 0:
         await db.co_owner_benefits.insert_many([dict(b) for b in CO_OWNER_BENEFITS_SEED])
+    # One-shot tier rename migration: Cadet/Partner/Inner Circle/Founder → Member/Insider/Co-Owner/Pro-Owner.
+    # Idempotent: matches only legacy names; safe to re-run on every boot.
+    _TIER_RENAME = {
+        "Cadet": "Member",
+        "Partner": "Insider",
+        "Inner Circle": "Co-Owner",
+        "Founder": "Pro-Owner",
+        # Legacy "Insider" (old Level 1 @ 500 AED) now overlaps with new "Member" range — recompute below.
+    }
+    for old, new in _TIER_RENAME.items():
+        await db.users.update_many({"tier": old}, {"$set": {"tier": new}})
+        await db.leaderboard_seed.update_many({"tier": old}, {"$set": {"tier": new}})
+        await db.co_owner_benefits.update_many({"unlock_tier": old}, {"$set": {"unlock_tier": new}})
+    # Recompute every user's tier from balance to fix the legacy-Insider overlap.
+    async for u in db.users.find({}, {"_id": 0, "user_id": 1, "aed_balance": 1, "tier": 1}):
+        new_tier = compute_tier(u.get("aed_balance", 0))
+        if new_tier != u.get("tier"):
+            await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"tier": new_tier}})
+    # Same balance-derived recompute for the seeded leaderboard rows.
+    async for s in db.leaderboard_seed.find({}, {"_id": 0, "name": 1, "balance": 1, "tier": 1}):
+        new_tier = compute_tier(s.get("balance", 0))
+        if new_tier != s.get("tier"):
+            await db.leaderboard_seed.update_one({"name": s["name"]}, {"$set": {"tier": new_tier}})
+    # And re-derive unlock_tier on benefit catalogue rows from unlock_threshold.
+    async for b in db.co_owner_benefits.find({}, {"_id": 0, "id": 1, "unlock_threshold": 1, "unlock_tier": 1}):
+        # The benefit "unlocks at" the named tier whose threshold == its unlock_threshold.
+        target = next((t["name"] for t in TIERS if t["threshold"] == b.get("unlock_threshold")), None)
+        if target and target != b.get("unlock_tier"):
+            await db.co_owner_benefits.update_one({"id": b["id"]}, {"$set": {"unlock_tier": target}})
     if await db.faqs.count_documents({}) == 0:
         await db.faqs.insert_many([dict(f) for f in FAQS_SEED])
     # One-shot migration: upgrade legacy 5-step milestone docs to the new 12-step journey.
@@ -980,7 +1009,7 @@ def _compute_next_reward(milestones: list, balance: int) -> dict:
         }
     nt = next_tier_info(balance)
     if nt["remaining"] <= 0:
-        return {"kind": "maxed", "amount": 0, "label": "Founder", "tier_name": "Founder"}
+        return {"kind": "maxed", "amount": 0, "label": "Pro-Owner", "tier_name": "Pro-Owner"}
     return {
         "kind": "tier",
         "amount": nt["remaining"],
@@ -1003,10 +1032,10 @@ async def benefits_ladder(user: CurrentUser):
         "current_tier": current_tier,
         "next_tier": next_tier,
         "tiers": [
-            {"level": 1, "name": "Insider", "threshold": 500, "benefits": ["Priority allocation access", "Exclusive webinars", "AED balance perks"]},
-            {"level": 2, "name": "Partner", "threshold": 2500, "benefits": ["24-hour priority access to new allocations", "Exclusive webinars with executive team", "Better entry pricing on selected properties", "Priority room selection & allocation"]},
-            {"level": 3, "name": "Inner Circle", "threshold": 5000, "benefits": ["Airport transfers", "Complimentary annual stays", "Private founder briefings"]},
-            {"level": 4, "name": "Founder", "threshold": 10000, "benefits": ["Dedicated relationship manager", "Advisory council access", "Invite-only events"]},
+            {"level": 1, "name": "Member",    "threshold": 500,   "benefits": ["Priority allocation access", "Exclusive webinars", "AED balance perks"]},
+            {"level": 2, "name": "Insider",   "threshold": 2500,  "benefits": ["24-hour priority access to new allocations", "Exclusive webinars with executive team", "Better entry pricing on selected properties", "Priority room selection & allocation"]},
+            {"level": 3, "name": "Co-Owner",  "threshold": 5000,  "benefits": ["Airport transfers", "Complimentary annual stays", "Private founder briefings"]},
+            {"level": 4, "name": "Pro-Owner", "threshold": 10000, "benefits": ["Dedicated relationship manager", "Advisory council access", "Invite-only events"]},
         ],
         "ways_to_earn": [
             {"id": "attend_webinar", "title": "Attend Webinar", "aed": 25, "icon": "calendar"},
