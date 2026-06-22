@@ -42,13 +42,17 @@ def _shell(title: str, intro: str, body_html: str, cta_label: Optional[str] = No
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:24px;overflow:hidden;">
         <tr><td style="padding:32px 32px 16px;">
-          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="width:48px;height:48px;border-radius:50%;overflow:hidden;background:#0A0A0B;">
-              <img src="https://www.onexassets.com/brand/onex-circle.png" alt="OneX" width="48" height="48" style="display:block;width:48px;height:48px;border-radius:50%;" />
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td width="48" style="width:48px;line-height:0;font-size:0;mso-line-height-rule:exactly;">
+              <img src="https://www.onexassets.com/brand/onex-circle.png"
+                   alt="OneX"
+                   width="48" height="48"
+                   border="0"
+                   style="display:block;width:48px;height:48px;border-radius:50%;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;background:#0A0A0B;" />
             </td>
-            <td style="padding-left:12px;">
-              <div style="color:{_TEXT};font-size:16px;font-weight:600;line-height:1;">OneX <span style="color:{_BRAND_GOLD};">Club</span></div>
-              <div style="color:{_DIM};font-size:10px;letter-spacing:0.2em;text-transform:uppercase;padding-top:6px;">Dubai · Assets</div>
+            <td style="padding-left:12px;vertical-align:middle;">
+              <div style="color:{_TEXT};font-size:16px;font-weight:600;line-height:1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">OneX <span style="color:{_BRAND_GOLD};">Club</span></div>
+              <div style="color:{_DIM};font-size:10px;letter-spacing:0.2em;text-transform:uppercase;padding-top:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">Dubai · Assets</div>
             </td>
           </tr></table>
         </td></tr>

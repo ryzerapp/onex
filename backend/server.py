@@ -63,7 +63,7 @@ class User(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
-    tier: str = "Cadet"
+    tier: str = "Member"
     aed_balance: int = 100
     referral_code: str
     referred_by: Optional[str] = None
@@ -111,17 +111,17 @@ def _webinar_room_url(webinar_id: str) -> str:
 
 # -------------------- Tier helpers --------------------
 TIERS = [
-    {"name": "Co-Owner Member", "threshold": 500, "key": "co_owner_member"},
-    {"name": "Priority Co-Owner", "threshold": 2500, "key": "priority"},
-    {"name": "Co-Owner Circle", "threshold": 5000, "key": "circle"},
-    {"name": "Elite Co-Owner", "threshold": 10000, "key": "elite"},
+    {"name": "Insider", "threshold": 500, "key": "co_owner_member"},
+    {"name": "Partner", "threshold": 2500, "key": "priority"},
+    {"name": "Inner Circle", "threshold": 5000, "key": "circle"},
+    {"name": "Founder", "threshold": 10000, "key": "elite"},
 ]
 
 
 def compute_tier(balance: int) -> str:
     if balance < 500:
-        return "Cadet"
-    name = "Cadet"
+        return "Member"
+    name = "Member"
     for t in TIERS:
         if balance >= t["threshold"]:
             name = t["name"]
@@ -132,7 +132,7 @@ def next_tier_info(balance: int):
     for t in TIERS:
         if balance < t["threshold"]:
             return {"name": t["name"], "threshold": t["threshold"], "remaining": t["threshold"] - balance}
-    return {"name": "Elite Co-Owner", "threshold": 10000, "remaining": 0}
+    return {"name": "Founder", "threshold": 10000, "remaining": 0}
 
 
 # -------------------- Auth helpers --------------------
@@ -272,24 +272,24 @@ UPDATES_SEED = [
 ]
 
 LEADERBOARD_SEED = [
-    {"name": "Hassan Al-Mansouri", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 8420, "referrals": 38, "tier": "Co-Owner Circle"},
-    {"name": "Priya Nair", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 6210, "referrals": 27, "tier": "Co-Owner Circle"},
-    {"name": "Rahul Mehta", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 4980, "referrals": 19, "tier": "Priority Co-Owner"},
-    {"name": "Sarah Lim", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 3420, "referrals": 14, "tier": "Priority Co-Owner"},
-    {"name": "Omar Khan", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2840, "referrals": 11, "tier": "Priority Co-Owner"},
-    {"name": "Maya Iyer", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2110, "referrals": 9, "tier": "Priority Co-Owner"},
-    {"name": "Daniel Park", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1685, "referrals": 7, "tier": "Co-Owner Member"},
-    {"name": "Anaya Sharma", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1240, "referrals": 5, "tier": "Co-Owner Member"},
+    {"name": "Hassan Al-Mansouri", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 8420, "referrals": 38, "tier": "Inner Circle"},
+    {"name": "Priya Nair", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 6210, "referrals": 27, "tier": "Inner Circle"},
+    {"name": "Rahul Mehta", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 4980, "referrals": 19, "tier": "Partner"},
+    {"name": "Sarah Lim", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 3420, "referrals": 14, "tier": "Partner"},
+    {"name": "Omar Khan", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2840, "referrals": 11, "tier": "Partner"},
+    {"name": "Maya Iyer", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2110, "referrals": 9, "tier": "Partner"},
+    {"name": "Daniel Park", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1685, "referrals": 7, "tier": "Insider"},
+    {"name": "Anaya Sharma", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1240, "referrals": 5, "tier": "Insider"},
 ]
 
 CO_OWNER_BENEFITS_SEED = [
-    {"id": "ben_priority_alloc", "title": "Priority Allocation Access", "description": "24-hour early window on every new property launch.", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Co-Owner Member", "unlock_threshold": 500},
-    {"id": "ben_executive_qa", "title": "Executive Q&A Sessions", "description": "Monthly closed-door sessions with the OneX leadership.", "image": "https://images.pexels.com/photos/5778470/pexels-photo-5778470.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Priority Co-Owner", "unlock_threshold": 2500},
-    {"id": "ben_airport_transfer", "title": "Complimentary Airport Transfers", "description": "Chauffeured airport pickup on every Dubai visit.", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Priority Co-Owner", "unlock_threshold": 2500},
-    {"id": "ben_founder_briefing", "title": "Private Founder Briefings", "description": "Invite-only briefings with founders ahead of every launch.", "image": "https://images.unsplash.com/photo-1661354421565-74ffd9650918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzgxMzAxOTAxfDA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Co-Owner Circle", "unlock_threshold": 5000},
-    {"id": "ben_annual_stay", "title": "Complimentary Annual Stays", "description": "Two nights every year in your favorite OneX asset.", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Co-Owner Circle", "unlock_threshold": 5000},
-    {"id": "ben_relationship_manager", "title": "Dedicated Relationship Manager", "description": "A senior OneX advisor on call, anytime.", "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Elite Co-Owner", "unlock_threshold": 10000},
-    {"id": "ben_advisory_council", "title": "Advisory Council Access", "description": "Help shape the OneX roadmap as part of our advisory council.", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Elite Co-Owner", "unlock_threshold": 10000},
+    {"id": "ben_priority_alloc", "title": "Priority Allocation Access", "description": "24-hour early window on every new property launch.", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Insider", "unlock_threshold": 500},
+    {"id": "ben_executive_qa", "title": "Executive Q&A Sessions", "description": "Monthly closed-door sessions with the OneX leadership.", "image": "https://images.pexels.com/photos/5778470/pexels-photo-5778470.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Partner", "unlock_threshold": 2500},
+    {"id": "ben_airport_transfer", "title": "Complimentary Airport Transfers", "description": "Chauffeured airport pickup on every Dubai visit.", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Partner", "unlock_threshold": 2500},
+    {"id": "ben_founder_briefing", "title": "Private Founder Briefings", "description": "Invite-only briefings with founders ahead of every launch.", "image": "https://images.unsplash.com/photo-1661354421565-74ffd9650918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzgxMzAxOTAxfDA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Inner Circle", "unlock_threshold": 5000},
+    {"id": "ben_annual_stay", "title": "Complimentary Annual Stays", "description": "Two nights every year in your favorite OneX asset.", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Inner Circle", "unlock_threshold": 5000},
+    {"id": "ben_relationship_manager", "title": "Dedicated Relationship Manager", "description": "A senior OneX advisor on call, anytime.", "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Founder", "unlock_threshold": 10000},
+    {"id": "ben_advisory_council", "title": "Advisory Council Access", "description": "Help shape the OneX roadmap as part of our advisory council.", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Founder", "unlock_threshold": 10000},
 ]
 
 FAQS_SEED = [
@@ -505,7 +505,7 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
             "email": email,
             "name": name,
             "picture": picture,
-            "tier": "Cadet",
+            "tier": "Member",
             "aed_balance": 100,
             "referral_code": _make_referral_code(name),
             "referred_by": None,
@@ -571,7 +571,7 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
         background.add_task(
             brevo_upsert_contact,
             email=user["email"], name=user["name"], ref_code=user["referral_code"],
-            tier=user.get("tier", "Cadet"), aed_balance=user.get("aed_balance", 0),
+            tier=user.get("tier", "Member"), aed_balance=user.get("aed_balance", 0),
             source="google",
         )
 
@@ -718,7 +718,7 @@ async def auth_email_verify(payload: EmailVerify, request: Request, response: Re
         name = email.split("@")[0].replace(".", " ").title()
         user_doc = {
             "user_id": user_id, "email": email, "name": name, "picture": None,
-            "tier": "Cadet", "aed_balance": 100, "referral_code": _make_referral_code(name),
+            "tier": "Member", "aed_balance": 100, "referral_code": _make_referral_code(name),
             "referred_by": None, "created_at": _now(),
         }
         await db.users.insert_one(user_doc)
@@ -735,7 +735,7 @@ async def auth_email_verify(payload: EmailVerify, request: Request, response: Re
         background.add_task(
             brevo_upsert_contact,
             email=user["email"], name=user["name"], ref_code=user["referral_code"],
-            tier=user.get("tier", "Cadet"), aed_balance=user.get("aed_balance", 0),
+            tier=user.get("tier", "Member"), aed_balance=user.get("aed_balance", 0),
             source="email",
         )
 
@@ -980,7 +980,7 @@ def _compute_next_reward(milestones: list, balance: int) -> dict:
         }
     nt = next_tier_info(balance)
     if nt["remaining"] <= 0:
-        return {"kind": "maxed", "amount": 0, "label": "Elite Co-Owner", "tier_name": "Elite Co-Owner"}
+        return {"kind": "maxed", "amount": 0, "label": "Founder", "tier_name": "Founder"}
     return {
         "kind": "tier",
         "amount": nt["remaining"],
@@ -1003,10 +1003,10 @@ async def benefits_ladder(user: CurrentUser):
         "current_tier": current_tier,
         "next_tier": next_tier,
         "tiers": [
-            {"level": 1, "name": "Co-Owner Member", "threshold": 500, "benefits": ["Priority allocation access", "Exclusive webinars", "AED balance perks"]},
-            {"level": 2, "name": "Priority Co-Owner", "threshold": 2500, "benefits": ["24-hour priority access to new allocations", "Exclusive webinars with executive team", "Better entry pricing on selected properties", "Priority room selection & allocation"]},
-            {"level": 3, "name": "Co-Owner Circle", "threshold": 5000, "benefits": ["Airport transfers", "Complimentary annual stays", "Private founder briefings"]},
-            {"level": 4, "name": "Elite Co-Owner", "threshold": 10000, "benefits": ["Dedicated relationship manager", "Advisory council access", "Invite-only events"]},
+            {"level": 1, "name": "Insider", "threshold": 500, "benefits": ["Priority allocation access", "Exclusive webinars", "AED balance perks"]},
+            {"level": 2, "name": "Partner", "threshold": 2500, "benefits": ["24-hour priority access to new allocations", "Exclusive webinars with executive team", "Better entry pricing on selected properties", "Priority room selection & allocation"]},
+            {"level": 3, "name": "Inner Circle", "threshold": 5000, "benefits": ["Airport transfers", "Complimentary annual stays", "Private founder briefings"]},
+            {"level": 4, "name": "Founder", "threshold": 10000, "benefits": ["Dedicated relationship manager", "Advisory council access", "Invite-only events"]},
         ],
         "ways_to_earn": [
             {"id": "attend_webinar", "title": "Attend Webinar", "aed": 25, "icon": "calendar"},
@@ -1388,6 +1388,20 @@ async def waitlist_diag():
     }
 
 
+@api.get("/activity")
+async def activity_feed(user: CurrentUser, limit: int = 50):
+    """Personal action history — every AED grant, milestone, referral, webinar, top-up.
+    Surfaced on the dashboard so the user always knows what they did + when."""
+    items = await db.activity_log.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).limit(max(1, min(limit, 100))).to_list(limit)
+    total_earned = sum(int(a.get("reward", 0) or 0) for a in items if a.get("reward"))
+    return {
+        "items": items,
+        "summary": {"count": len(items), "aed_earned_visible": total_earned},
+    }
+
+
 # -------------------- Referrals --------------------
 REFERRAL_TTL_DAYS = 30  # a click is "active" for 30 days, then "expired" if no signup attribution happened.
 
@@ -1501,7 +1515,7 @@ async def get_referrals(user: CurrentUser):
             "id": r.get("id"),
             "name": fallback_name,
             "email": _email_partial((referee or {}).get("email") or fallback_email),
-            "tier": (referee or {}).get("tier") or ("Waitlist" if is_waitlist_only else "Cadet"),
+            "tier": (referee or {}).get("tier") or ("Waitlist" if is_waitlist_only else "Member"),
             "via": r.get("via", "link"),
             "joined_at": (referee or {}).get("created_at") or r.get("created_at"),
             "verified": verified,
@@ -1590,8 +1604,8 @@ async def _user_rank(user_id: str) -> dict:
     for s in seed:
         pool.append({"name": s["name"], "avatar": s["avatar"], "balance": s["balance"], "referrals": s["referrals"], "tier": s["tier"], "is_user": False})
     for o in others:
-        pool.append({"name": o["name"], "avatar": o.get("picture"), "balance": o["aed_balance"], "referrals": 0, "tier": o.get("tier", "Cadet"), "is_user": False})
-    pool.append({"name": user["name"], "avatar": user.get("picture"), "balance": user["aed_balance"], "referrals": 0, "tier": user.get("tier", "Cadet"), "is_user": True})
+        pool.append({"name": o["name"], "avatar": o.get("picture"), "balance": o["aed_balance"], "referrals": 0, "tier": o.get("tier", "Member"), "is_user": False})
+    pool.append({"name": user["name"], "avatar": user.get("picture"), "balance": user["aed_balance"], "referrals": 0, "tier": user.get("tier", "Member"), "is_user": True})
     pool.sort(key=lambda x: x["balance"], reverse=True)
     rank = next((i + 1 for i, x in enumerate(pool) if x["is_user"]), len(pool))
     return {"rank": rank, "balance": user["aed_balance"], "total": len(pool)}
@@ -1638,13 +1652,13 @@ async def get_leaderboard(user: CurrentUser, period: str = "weekly"):
         pool.append({
             "name": o["name"], "avatar": o.get("picture"),
             "balance": int(bal), "referrals": 0,
-            "tier": o.get("tier", "Cadet"), "is_user": False,
+            "tier": o.get("tier", "Member"), "is_user": False,
         })
     me_balance = earned_by_user.get(user["user_id"], 0) if period != "all_time" else user["aed_balance"]
     pool.append({
         "name": user["name"], "avatar": user.get("picture"),
         "balance": int(me_balance), "referrals": 0,
-        "tier": user.get("tier", "Cadet"), "is_user": True,
+        "tier": user.get("tier", "Member"), "is_user": True,
     })
     pool.sort(key=lambda x: x["balance"], reverse=True)
     for i, p in enumerate(pool):
@@ -1714,7 +1728,7 @@ async def get_support(user: CurrentUser):
             "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85",
             "status": "Online",
         },
-        "tier": user.get("tier", "Cadet"),
+        "tier": user.get("tier", "Member"),
     }
 
 
@@ -1931,7 +1945,7 @@ async def _credit_payment(tx: dict, origin: Optional[str] = None) -> dict:
                 aed=aed,
                 usd=float(tx.get("amount_usd", 0)),
                 new_balance=user["aed_balance"],
-                tier=user.get("tier", "Cadet"),
+                tier=user.get("tier", "Member"),
                 app_url=origin or "https://onex.club",
             )
     except Exception as e:  # noqa: BLE001

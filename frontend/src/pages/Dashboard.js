@@ -5,7 +5,7 @@ import ProgressRing from "@/components/common/ProgressRing";
 import BrandMark from "@/components/common/BrandMark";
 import {
   Hand, Bell, ArrowRight, ChevronRight, Star, Smartphone, IdCard, Calendar, PieChart,
-  UserPlus, Flag, Building2, Wallet, CheckCircle2, Gift,
+  UserPlus, Flag, Building2, Wallet, CheckCircle2, Gift, Sparkles, Check,
 } from "lucide-react";
 
 const iconMap = { "user-plus": UserPlus, smartphone: Smartphone, "id-card": IdCard, calendar: Calendar, "pie-chart": PieChart, flag: Flag };
@@ -166,7 +166,7 @@ const Dashboard = () => {
           <div className="onex-card p-6 sm:p-7" data-testid="dashboard-property-spotlight">
             <div className="flex items-start gap-5">
               <div className="flex-1">
-                <div className="text-[12px] uppercase tracking-[0.18em] text-zinc-500">Upcoming Property Launch</div>
+                <div className="text-[12px] uppercase tracking-[0.18em] text-[#8CFF2E] flex items-center gap-2"><Sparkles size={11} /> Upcoming Property Launch</div>
                 <h3 className="text-[22px] font-semibold text-white mt-3 leading-tight">{spotlight_property.name}</h3>
                 <div className="flex items-center gap-2 mt-2 text-zinc-400 text-[13px]">
                   <Calendar size={14} className="text-[#8CFF2E]" />
@@ -178,11 +178,22 @@ const Dashboard = () => {
               </div>
               <img src={spotlight_property.image} alt={spotlight_property.name} className="w-24 h-32 object-cover rounded-2xl border border-[#27272A]" />
             </div>
+
+            {/* Why this matters — value props for the user */}
+            <div className="mt-5 rounded-2xl border border-[#27272A] bg-[#0A0A0B] p-4">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500 mb-2">Why join the waitlist now</div>
+              <ul className="space-y-1.5 text-[12.5px] text-zinc-300">
+                <li className="flex items-start gap-2"><Check size={13} className="text-[#8CFF2E] mt-0.5 flex-shrink-0" /> 24-hour <span className="text-white">priority window</span> before the public release.</li>
+                <li className="flex items-start gap-2"><Check size={13} className="text-[#8CFF2E] mt-0.5 flex-shrink-0" /> Your AED credits <span className="text-white">reduce the effective entry</span> on this asset.</li>
+                <li className="flex items-start gap-2"><Check size={13} className="text-[#8CFF2E] mt-0.5 flex-shrink-0" /> Limited to <span className="text-white">{spotlight_property.units_available || "12"} co-owner slots</span> — first to allocate wins.</li>
+              </ul>
+            </div>
+
             <button
               onClick={() => navigate("/properties")}
               data-testid="dashboard-view-property-btn"
-              className="mt-6 w-full btn-ghost border-[#8CFF2E]/30 text-[#8CFF2E] hover:border-[#8CFF2E]"
-            >View Details <ArrowRight size={16} /></button>
+              className="mt-5 w-full btn-gold"
+            >Join the Launch Waitlist <ArrowRight size={16} /></button>
           </div>
         )}
 

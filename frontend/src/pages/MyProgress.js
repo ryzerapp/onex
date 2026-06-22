@@ -225,6 +225,7 @@ const MyProgress = () => {
               const reward = STEP_REWARDS[m.id] || 0;
               const isLocked = m.status === "upcoming";
               const linked = AUTO_ROUTE[m.id] || MANUAL_ROUTE[m.id];
+              const canAct = m.status !== "completed" && !isLocked;
               return (
                 <div key={m.id} className={`flex gap-5 items-start mb-4 relative ${isLocked ? "opacity-65" : ""}`} data-testid={`milestone-${m.id}`}>
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-semibold z-10" style={{ background: statusBg, border: `1.5px solid ${statusColor}` }}>
@@ -251,33 +252,33 @@ const MyProgress = () => {
                         </div>
                         <div className="text-zinc-500 text-[12px] mt-0.5">{m.subtitle}</div>
                       </div>
-                      <span className="onex-pill" style={{ background: `${statusColor}22`, color: statusColor }}>{statusLabel}</span>
+                      {/* Inline always-visible CTA — no dropdown needed. */}
+                      {canAct ? (
+                        linked ? (
+                          <button onClick={() => navigate(linked.route)} className="btn-gold !py-2 !px-4 text-[12.5px] whitespace-nowrap" data-testid={`milestone-go-${m.id}`}>
+                            {linked.label} <ArrowRight size={13} />
+                          </button>
+                        ) : (
+                          <button onClick={() => complete(m.id)} className="btn-gold !py-2 !px-4 text-[12.5px] whitespace-nowrap" data-testid={`milestone-complete-${m.id}`}>
+                            Mark Complete <ArrowRight size={13} />
+                          </button>
+                        )
+                      ) : (
+                        <span className="onex-pill" style={{ background: `${statusColor}22`, color: statusColor }}>{statusLabel}</span>
+                      )}
                       <button onClick={() => setExpanded(open ? null : m.id)} className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center" data-testid={`milestone-expand-${m.id}`}>
                         {open ? <ChevronUp size={14} className="text-zinc-400" /> : <ChevronDown size={14} className="text-zinc-400" />}
                       </button>
                     </div>
                     {open && (
-                      <div className="mt-4 pt-4 border-t border-[#27272A] flex items-center justify-between gap-3 flex-wrap fade-in">
-                        <div className="text-[13px] text-zinc-400 flex-1 min-w-[180px]">
-                          {m.status === "completed"
-                            ? (m.completed_at ? `Completed ${new Date(m.completed_at).toLocaleDateString()}` : "Completed")
-                            : isLocked
-                            ? "Locks open once the previous step is complete."
-                            : m.kind === "auto"
-                            ? "Auto-completes the moment you take the action below."
-                            : "Tap below to mark this step complete and earn AED."}
-                        </div>
-                        {m.status !== "completed" && !isLocked && (
-                          linked ? (
-                            <button onClick={() => navigate(linked.route)} className="btn-gold !py-2 !px-5 text-[13px]" data-testid={`milestone-go-${m.id}`}>
-                              {linked.label} <ArrowRight size={14} />
-                            </button>
-                          ) : (
-                            <button onClick={() => complete(m.id)} className="btn-gold !py-2 !px-5 text-[13px]" data-testid={`milestone-complete-${m.id}`}>
-                              Mark Complete <ArrowRight size={14} />
-                            </button>
-                          )
-                        )}
+                      <div className="mt-4 pt-4 border-t border-[#27272A] text-[13px] text-zinc-400 fade-in">
+                        {m.status === "completed"
+                          ? (m.completed_at ? `Completed ${new Date(m.completed_at).toLocaleDateString()}` : "Completed")
+                          : isLocked
+                          ? "Locks open once the previous step is complete."
+                          : m.kind === "auto"
+                          ? "Auto-completes the moment you take the action above."
+                          : "Tap the button to mark this step complete and earn AED."}
                       </div>
                     )}
                   </div>

@@ -6,10 +6,10 @@ import LevelDetailModal from "@/components/levels/LevelDetailModal";
 
 /** Tier metadata. Order matters: index 0 = lowest, 3 = highest. */
 const TIERS = [
-  { name: "Co-Owner Member",  level: 1, threshold: 500,   icon: Star,    accent: "#60A5FA", tagline: "The gateway into co-ownership.",      lifestyle: "Early-access perks · curated property briefings · founding-circle pricing." },
-  { name: "Priority Co-Owner", level: 2, threshold: 2500,  icon: Diamond, accent: "#A78BFA", tagline: "Front-of-line allocation across launches.", lifestyle: "Chauffeured airport pickup · executive Q&As · 7-day priority window before public." },
-  { name: "Co-Owner Circle",   level: 3, threshold: 5000,  icon: Crown,   accent: "#8CFF2E", tagline: "An intimate community of high-conviction partners.", lifestyle: "Annual stays at OneX properties · founder briefings · invite-only assets." },
-  { name: "Elite Co-Owner",    level: 4, threshold: 10000, icon: Trophy,  accent: "#F472B6", tagline: "Help shape the next decade of OneX.",       lifestyle: "Dedicated relationship manager · advisory council seat · co-ownership of flagship assets." },
+  { name: "Member",       level: 1, threshold: 500,   icon: Star,    accent: "#60A5FA", tagline: "You're in. The gateway into OneX co-ownership.",              lifestyle: "Early-access perks · curated property briefings · founding-circle pricing." },
+  { name: "Insider",      level: 2, threshold: 2500,  icon: Diamond, accent: "#A78BFA", tagline: "Front-of-line allocation across every launch.",                lifestyle: "Chauffeured airport pickup · executive Q&As · 7-day priority window before public." },
+  { name: "Inner Circle", level: 3, threshold: 5000,  icon: Crown,   accent: "#8CFF2E", tagline: "An intimate community of high-conviction partners.",            lifestyle: "Annual stays at OneX properties · founder briefings · invite-only assets." },
+  { name: "Founder",      level: 4, threshold: 10000, icon: Trophy,  accent: "#F472B6", tagline: "Help shape the next decade of OneX.",                           lifestyle: "Dedicated relationship manager · advisory council seat · co-ownership of flagship assets." },
 ];
 
 const fmtAED = (n) => `AED ${Math.round(n).toLocaleString()}`;
