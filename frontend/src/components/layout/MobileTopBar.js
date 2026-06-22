@@ -1,10 +1,10 @@
 import React from "react";
-import { Menu, Wallet } from "lucide-react";
+import { Menu, Wallet, Bell } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import BrandMark from "@/components/common/BrandMark";
 
-/** Sticky top bar shown on mobile (<lg). Contains brand, AED balance and the drawer trigger. */
+/** Sticky top bar shown on mobile (<lg). Contains brand, AED balance, notifications and the drawer trigger. */
 const MobileTopBar = ({ onOpenMenu }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -41,6 +41,17 @@ const MobileTopBar = ({ onOpenMenu }) => {
           >
             <Wallet size={12} className="text-[#8CFF2E]" />
             <span className="text-[12px] font-semibold text-white tabular-nums">{user?.aed_balance ?? 0}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/community")}
+            data-testid="mobile-notifications"
+            className="relative w-10 h-10 rounded-xl bg-[#15161A] border border-[#27272A] flex items-center justify-center active:scale-95 transition"
+            aria-label="View notifications"
+          >
+            <Bell size={16} className="text-zinc-200" />
+            <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[#8CFF2E]" />
           </button>
 
           <button

@@ -65,32 +65,33 @@ const Dashboard = () => {
     <div data-testid="dashboard-page">
       {/* Header */}
       <div className="flex items-start justify-between gap-6 flex-wrap">
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display tracking-tight text-white flex items-center gap-3">
             Welcome back, {user.name.split(" ")[0]}!
             <Hand className="text-[#8CFF2E]" size={32} />
           </h1>
           <p className="text-zinc-400 mt-3 text-[15px]">Your journey to co-ownership starts here.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <button data-testid="dashboard-notifications-btn" className="relative w-11 h-11 rounded-full border border-[#27272A] bg-[#15161A] hover:bg-[#1E1F24] transition-all flex items-center justify-center">
+        <div className="flex items-center gap-4 w-full lg:w-auto">
+          {/* Desktop-only Bell — mobile bell lives in MobileTopBar */}
+          <button data-testid="dashboard-notifications-btn" className="hidden lg:flex relative w-11 h-11 rounded-full border border-[#27272A] bg-[#15161A] hover:bg-[#1E1F24] transition-all items-center justify-center">
             <Bell size={16} className="text-zinc-300" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#8CFF2E]" />
           </button>
           <button
             onClick={() => navigate("/benefits-ladder")}
             data-testid="dashboard-balance-pill"
-            className="onex-card flex items-center gap-3 px-5 py-3 hover:border-[#8CFF2E]/40 transition-all"
+            className="onex-card flex items-center gap-3 px-5 py-3 hover:border-[#8CFF2E]/40 transition-all w-full lg:w-auto"
           >
-            <div className="w-11 h-11 rounded-2xl onex-gold-fill flex items-center justify-center">
+            <div className="w-11 h-11 rounded-2xl onex-gold-fill flex items-center justify-center flex-shrink-0">
               <Wallet size={18} />
             </div>
-            <div className="text-left">
+            <div className="text-left flex-1 min-w-0">
               <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Co-Owner Credits Balance</div>
               <div className="text-[20px] font-semibold text-[#8CFF2E] leading-none mt-1">AED {user.aed_balance}</div>
               <div className="text-[11px] text-zinc-500 mt-1">Reduce effective entry on upcoming assets</div>
             </div>
-            <ChevronRight size={16} className="text-zinc-500" />
+            <ChevronRight size={16} className="text-zinc-500 flex-shrink-0" />
           </button>
         </div>
       </div>
