@@ -69,6 +69,16 @@ currency surface. Personalization based on user stage at all times.
 - **Favicon + PWA icons**: generated `favicon.ico` (multi-resolution), `apple-touch-icon.png` (180×180), `logo192.png`, `logo512.png`, and `brand/favicon-16..512.png` from the logo. `index.html` references all of them; title updated to "OneX Club™ — Dubai Co-Ownership"; theme-color `#0A0A0B`; mask-icon with brand color.
 - **Co-Owner Benefits deep redesign**: rich gradient hero with current-tier story + AED balance card + next-tier mini progress bar; "Four levels" overview rail (Star → Diamond → Crown → Trophy with accent color per tier + click-to-open detail modal); per-tier banners with lifestyle tagline + locked/unlocked pill + larger progress bar; benefit cards with brand-tinted borders when unlocked + "X AED to go" hints when locked; "Three fast ways to climb a tier" bottom CTA (Attend webinar / Invite friend / Top up).
 
+## What's implemented (2026-02-22 — gamified journey + Framer waitlist)
+- **12-step gamified journey** (was 5): Join Waitlist → Verify Mobile → **Browse Dubai Properties** (auto) → **Share Your Referral Link** (auto) → Attend a Webinar → **Save a Property** (auto) → **Invite a Friend (signup)** (auto) → Complete KYC → Reserve Allocation Interest → **Friend Completes KYC** (auto) → **Join Community Updates** (auto) → **Allocation-Ready Co-Owner**. Each step has a per-step AED reward (10–100 AED) and is either `manual` (Mark Complete button) or `auto` (deep-link CTA to the page where it'll auto-complete).
+- **`auto_complete_data_milestones(user_id)`** runs on every `/progress` and `/dashboard` call. Cascades exactly one pending step (the first non-completed). Migration in `seed_data()` upgrades all legacy 5-step users to the new 12-step schema while preserving their completions.
+- **`POST /api/properties/view`** (new): logs `property_views`; triggered automatically by DubaiProperties listing page; drives `browse_properties` milestone.
+- **`POST /api/waitlist/join`** (PUBLIC, no auth): drop-in endpoint for the user's Framer landing page. Records `waitlist_signups`, dedup-checks by email, attributes referrer (+AED 25 + click conversion), sends welcome email to visitor AND admin notification to `surya@onex.exchange`.
+- **`GET /api/waitlist/info?ref=<code>`** (PUBLIC): used by the Framer snippet to greet the visitor with the inviter's name.
+- **Waitlist signups now appear in `/api/referrals`** as referees with `status="waitlist"` (pink chip), `aed_earned=25`, `tier="Waitlist"`. New stats field `waitlist_signups`.
+- **Invite & Earn — Capture emails on your Framer site**: new section with two big cards (copy referral URL, copy paste-ready HTML+JS snippet), "What happens on submit" explainer, and a new **Waitlist tab** in the pipeline filter.
+- **Resend rate-limit retry**: `_send()` now retries up to 3× with 0/0.4/1.2s backoff on 429/rate-limit errors — survives Framer-driven traffic bursts without dropping welcome emails.
+
 ## Backlog (P1)
 - Sora-2-style hero videos on Co-Owner Benefits.
 - Email verification capture for shared referral signups.

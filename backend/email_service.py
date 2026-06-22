@@ -74,14 +74,25 @@ async def _send(to: str, subject: str, html: str) -> Optional[str]:
         return None
     sender = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
     params = {"from": f"OneX Club <{sender}>", "to": [to], "subject": subject, "html": html}
-    try:
-        resp = await asyncio.to_thread(resend.Emails.send, params)
-        email_id = resp.get("id") if isinstance(resp, dict) else None
-        log.info("email sent id=%s to=%s subject=%s", email_id, to, subject)
-        return email_id
-    except Exception as e:  # noqa: BLE001
-        log.exception("resend send failed to=%s subject=%s: %s", to, subject, e)
-        return None
+    # Resend free tier caps at 5 req/sec. Retry transient rate-limit errors with a
+    # short backoff so burst signups (e.g., a Framer page going viral) don't drop emails.
+    delays = (0, 0.4, 1.2)
+    last_err: Optional[Exception] = None
+    for attempt, delay in enumerate(delays, start=1):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            resp = await asyncio.to_thread(resend.Emails.send, params)
+            email_id = resp.get("id") if isinstance(resp, dict) else None
+            log.info("email sent id=%s to=%s subject=%s attempt=%d", email_id, to, subject, attempt)
+            return email_id
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            msg = str(e).lower()
+            if "rate" not in msg and "429" not in msg:
+                break  # not a rate-limit — don't waste retries
+    log.exception("resend send failed to=%s subject=%s after %d attempts: %s", to, subject, len(delays), last_err)
+    return None
 
 
 # -------------------- Template helpers --------------------
