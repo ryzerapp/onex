@@ -63,6 +63,12 @@ currency surface. Personalization based on user stage at all times.
 - **Capacitor 7 wrapper**: `capacitor.config.ts` (appId `club.onex.app`, webDir `build`), `src/native.js` boots StatusBar/SplashScreen/Android-back, `package.json` cap:* scripts (`cap:add:ios`, `cap:add:android`, `cap:sync`, `cap:open:ios`, `cap:open:android`, `cap:run:*`).
 - **`MOBILE_BUILD.md`**: full iOS + Android shipping playbook (Xcode signing, Play Console .aab, icon/splash generation, troubleshooting).
 
+## What's implemented (2026-02-22 — brand rebrand + Co-Owner Benefits redesign)
+- **Brand colour migration**: gold (`#FACC15`) → lime (`#8CFF2E`) extracted from the user-supplied round logo. Hover variant `#6DDB1E`, shimmer accent `#D5FFB8`. Updated across `index.css` (CSS var `--onex-gold` + body radial-gradient + ::selection), every page, every modal, every component, both email templates AND the OTP email body. Zero residual gold hex values remain.
+- **Round brand logo**: new `BrandMark` component renders `/brand/onex-circle.png` in a circular wrapper with optional glow. Replaces every legacy "1X" placeholder — Sidebar (size 48 glow), MobileTopBar (size 36), Login (size 48 glow), Dashboard footer banner (size 56 glow), MyProgress next-reward card (size 64 glow).
+- **Favicon + PWA icons**: generated `favicon.ico` (multi-resolution), `apple-touch-icon.png` (180×180), `logo192.png`, `logo512.png`, and `brand/favicon-16..512.png` from the logo. `index.html` references all of them; title updated to "OneX Club™ — Dubai Co-Ownership"; theme-color `#0A0A0B`; mask-icon with brand color.
+- **Co-Owner Benefits deep redesign**: rich gradient hero with current-tier story + AED balance card + next-tier mini progress bar; "Four levels" overview rail (Star → Diamond → Crown → Trophy with accent color per tier + click-to-open detail modal); per-tier banners with lifestyle tagline + locked/unlocked pill + larger progress bar; benefit cards with brand-tinted borders when unlocked + "X AED to go" hints when locked; "Three fast ways to climb a tier" bottom CTA (Attend webinar / Invite friend / Top up).
+
 ## Backlog (P1)
 - Sora-2-style hero videos on Co-Owner Benefits.
 - Email verification capture for shared referral signups.

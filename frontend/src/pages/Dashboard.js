@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { useNavigate } from "react-router-dom";
 import ProgressRing from "@/components/common/ProgressRing";
+import BrandMark from "@/components/common/BrandMark";
 import {
   Hand, Bell, ArrowRight, ChevronRight, Star, Smartphone, IdCard, Calendar, PieChart,
   UserPlus, Flag, Building2, Wallet, CheckCircle2, Gift,
@@ -292,7 +293,7 @@ const Dashboard = () => {
 
       {/* Footer banner */}
       <div className="onex-card mt-12 p-6 sm:p-8 flex items-center gap-6 flex-wrap" data-testid="dashboard-footer-banner">
-        <div className="w-14 h-14 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
+        <BrandMark size={56} glow />
         <div className="flex-1 min-w-[260px]">
           <h3 className="text-[18px] font-semibold text-white">Exclusive Co-Ownership. High-Yield Assets. Premium Benefits.</h3>
           <p className="text-zinc-400 text-[13px] mt-1">OneX Club is your gateway to Dubai’s most exclusive real estate opportunities.</p>

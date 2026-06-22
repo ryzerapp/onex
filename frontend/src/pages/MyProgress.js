@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import ProgressRing from "@/components/common/ProgressRing";
 import PhoneCaptureModal from "@/components/progress/PhoneCaptureModal";
+import BrandMark from "@/components/common/BrandMark";
 import {
   ArrowLeft, Flag, UserPlus, Smartphone, IdCard, Calendar, PieChart,
   CheckCircle2, Gift, Headphones, ChevronDown, ChevronUp, ArrowRight,
@@ -59,7 +60,7 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
           <CheckCircle2 size={12} /> Journey complete
         </div>
         <div className="mt-5 flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
+          <BrandMark size={64} glow />
           <div>
             <div className="text-[24px] font-semibold text-[#8CFF2E]">AED {nextReward.amount}</div>
             <div className="text-[12px] text-zinc-500">to unlock {nextReward.tier_name}</div>
@@ -81,7 +82,7 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
     <div className="onex-card p-6" data-testid="next-reward-card">
       <div className="flex items-center gap-2 text-[#8CFF2E]"><Gift size={16} /><span className="text-[13px] font-medium">Next Reward</span></div>
       <div className="mt-5 flex items-center gap-4">
-        <div className="w-16 h-16 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
+        <BrandMark size={64} glow />
         <div>
           <div className="text-[28px] font-semibold text-[#8CFF2E]">+AED {nextReward.amount}</div>
           <div className="text-[12px] text-zinc-500">Complete {nextReward.label}</div>
