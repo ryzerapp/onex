@@ -126,15 +126,31 @@ const BenefitsLadder = () => {
 
           {/* Tier ladder */}
           <div className="onex-card p-8" data-testid="ladder-tiers-card">
-            <div className="grid grid-cols-4 gap-3 sm:gap-6">
+            <div className="relative grid grid-cols-4 gap-3 sm:gap-6">
+              {/* Animated connector — runs through the icon centers, behind the buttons.
+                  Vertically anchored to the icon row (eyebrow ~24px + icon-half 32px = 56px).
+                  Horizontally spans from first icon center to last icon center. */}
+              <div className="hidden sm:block absolute top-[56px] left-[12.5%] right-[12.5%] h-[2px] -z-0 pointer-events-none">
+                <div className="absolute inset-0 bg-[#27272A] rounded-full" />
+                <div
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#8CFF2E] to-[#22C55E] rounded-full transition-[width] duration-700"
+                  style={{
+                    width: `${Math.min(100, Math.round(
+                      (data.tiers.findIndex(
+                        (t, i) => balance < t.threshold || i === data.tiers.length - 1
+                      ) / Math.max(1, data.tiers.length - 1)) * 100
+                    ))}%`,
+                  }}
+                />
+                {/* Live shimmer that sweeps along the line to draw the eye forward. */}
+                <div className="absolute inset-y-0 w-1/3 onex-shimmer-sweep rounded-full" />
+              </div>
+
               {data.tiers.map((t, idx) => {
                 const isCurrent = balance >= t.threshold && (idx + 1 === data.tiers.length || balance < data.tiers[idx + 1].threshold);
                 const unlocked = balance >= t.threshold;
                 return (
-                  <button key={t.level} onClick={() => setActiveTier(t)} className="text-center relative group" data-testid={`tier-${t.name.replace(/\s+/g, "-").toLowerCase()}`}>
-                    {idx < data.tiers.length - 1 && (
-                      <div className={`hidden sm:block absolute top-[34px] left-[55%] right-[-45%] h-px ${unlocked ? "bg-[#8CFF2E]" : "bg-[#27272A]"}`} />
-                    )}
+                  <button key={t.level} onClick={() => setActiveTier(t)} className="text-center relative group z-10" data-testid={`tier-${t.name.replace(/\s+/g, "-").toLowerCase()}`}>
                     <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-2">Level {t.level}</div>
                     <div className={`relative w-16 h-16 rounded-full mx-auto flex items-center justify-center group-hover:scale-105 transition-transform ${unlocked ? "onex-gold-fill onex-glow-gold" : "bg-[#15161A] border border-[#27272A] text-zinc-500"}`}>
                       {unlocked ? <User size={20} /> : <Lock size={18} />}
@@ -288,7 +304,11 @@ const BenefitsLadder = () => {
         onClose={() => setActiveTier(null)}
         onAction={(a) => {
           setActiveTier(null);
-          if (a.route.endsWith("#topup")) { setTopupOpen(true); return; }
+          // Top-up actions return route="topup" — open the in-page TopUpModal.
+          if (a.route === "topup" || (typeof a.route === "string" && a.route.endsWith("#topup"))) {
+            setTopupOpen(true);
+            return;
+          }
           navigate(a.route);
         }}
       />

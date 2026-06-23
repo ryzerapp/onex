@@ -282,3 +282,41 @@ async def send_milestone_done(to: str, name: str, milestone_title: str, granted_
             cta_url=f"{app_url.rstrip('/')}/progress",
         ),
     )
+
+
+async def send_property_reminder_email(to: str, name: str, prop: dict, app_url: str) -> Optional[str]:
+    """Sent when a user clicks 'Remind me via email' on a property they've already
+    waitlisted. Confirms their spot and promises a launch-day notification."""
+    first_name = (name or "Member").split(" ")[0]
+    prop_name = prop.get("name", "this property")
+    location = prop.get("location", "Dubai")
+    waitlist_count = prop.get("waitlist_count", 0)
+    spots_total = prop.get("spots_total", 0)
+    body = f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0A0A0B;border:1px solid {_BORDER};border-radius:16px;">
+      <tr><td style="padding:24px;">
+        <div style="color:{_BRAND_GOLD};font-size:11px;letter-spacing:0.18em;text-transform:uppercase;">You're on the list ✓</div>
+        <div style="color:{_TEXT};font-size:22px;font-weight:600;padding-top:12px;line-height:1.25;">{prop_name}</div>
+        <div style="color:{_DIM};font-size:13px;padding-top:6px;">{location}</div>
+      </td></tr>
+      <tr><td style="padding:0 24px 20px;">
+        <div style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:14px;padding:18px;">
+          <div style="color:{_TEXT};font-size:14px;line-height:1.6;">
+            We'll email you the moment allocation opens — {waitlist_count}+ members are queued ahead of you for {spots_total} spots.
+            Members get a <span style="color:{_BRAND_GOLD};font-weight:600;">24-hour priority window</span> before the public release.
+          </div>
+        </div>
+      </td></tr>
+    </table>
+    """
+    return await _send(
+        to=to,
+        subject=f"You're on the list — {prop_name}",
+        html=_shell(
+            title=f"Got it, {first_name}.",
+            intro=f"You'll be the first to know when {prop_name} opens for allocation. No action needed from your side — we'll handle the rest.",
+            body_html=body,
+            cta_label="View property",
+            cta_url=f"{app_url.rstrip('/')}/properties",
+        ),
+    )

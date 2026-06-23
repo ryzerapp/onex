@@ -36,7 +36,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
-from email_service import send_milestone_done, send_topup_receipt, send_welcome, send_webinar_reminder, send_support_inbound, send_waitlist_welcome
+from email_service import send_milestone_done, send_topup_receipt, send_welcome, send_webinar_reminder, send_support_inbound, send_waitlist_welcome, send_property_reminder_email
 from brevo_client import upsert_contact as brevo_upsert_contact
 
 ROOT_DIR = Path(__file__).parent
@@ -495,8 +495,9 @@ async def auto_complete_data_milestones(user_id: str) -> bool:
         "invite_friend":     any(r.get("verified") for r in referees),
         "friend_kyc":        any(r.get("kyc_completed") for r in referees),
         "join_community":    (await _have("user_likes", {"user_id": user_id})) or (await _have("user_saves", {"user_id": user_id})),
-        # attend_webinar — auto if the user actually attended (not just registered).
-        "attend_webinar":    await _have("webinar_registrations", {"user_id": user_id, "attended": True}),
+        # attend_webinar — completes only after the user attends 2+ webinars
+        # (deeper engagement signal than a single attendance).
+        "attend_webinar":    (await db.webinar_registrations.count_documents({"user_id": user_id, "attended": True})) >= 2,
     }
 
     for m in milestones:
@@ -1354,6 +1355,55 @@ async def log_property_view(payload: PropertyAction, user: CurrentUser):
     return {"ok": True}
 
 
+@api.post("/properties/remind")
+async def send_property_reminder(payload: PropertyAction, user: CurrentUser,
+                                 background: BackgroundTasks, request: Request):
+    """User clicks 'Remind me via email' on the 'Already on waitlist' modal — flips
+    a flag in their waitlist entry and sends a confirmation email immediately."""
+    entry = await db.waitlist_entries.find_one({
+        "user_id": user["user_id"], "property_id": payload.property_id,
+    })
+    if not entry:
+        raise HTTPException(status_code=404, detail="You're not on the waitlist for this property.")
+    prop = await db.properties.find_one({"id": payload.property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    await db.waitlist_entries.update_one(
+        {"_id": entry["_id"]},
+        {"$set": {"reminder_opt_in": True, "reminder_set_at": _now()}},
+    )
+    background.add_task(
+        send_property_reminder_email,
+        user["email"], user["name"], prop, _app_url(request),
+    )
+    return {"ok": True, "property_name": prop.get("name")}
+
+
+@api.get("/tier-progress")
+async def get_tier_progress(user: CurrentUser):
+    """Real-time signals that drive the 'Ways to get there' checklist inside
+    LevelDetailModal. Each action returns done=true/false and a numeric current/target
+    so the modal can show '✓ done' or '+X more needed'."""
+    uid = user["user_id"]
+    referrals = await db.referrals.count_documents({"referrer_id": uid})
+    verified_refs = await db.referrals.count_documents({"referrer_id": uid, "verified": True})
+    kyc_refs = await db.referrals.count_documents({"referrer_id": uid, "kyc_completed": True})
+    coowner_refs = await db.referrals.count_documents({"referrer_id": uid, "kyc_completed": True, "became_coowner": True})
+    webinars_attended = await db.webinar_registrations.count_documents({"user_id": uid, "attended": True})
+    saved_props = await db.saved_properties.count_documents({"user_id": uid})
+    interests_reserved = bool(await db.user_allocation_interests.find_one({"user_id": uid}))
+    return {
+        "balance": user.get("aed_balance", 0),
+        "referrals": referrals,
+        "verified_referrals": verified_refs,
+        "kyc_referrals": kyc_refs,
+        "coowner_referrals": coowner_refs,
+        "webinars_attended": webinars_attended,
+        "saved_properties": saved_props,
+        "interests_reserved": interests_reserved,
+    }
+
+
 # -------------------- Allocation interests --------------------
 @api.get("/allocation-interests")
 async def get_allocation_interests(user: CurrentUser):
@@ -1907,6 +1957,17 @@ async def get_leaderboard(user: CurrentUser, period: str = "weekly"):
     agg = await db.activity_log.aggregate(pipeline).to_list(500)
     earned_by_user = {a["_id"]: int(a["total"]) for a in agg}
 
+    # Real referral counts per user, period-windowed (not seed-faked).
+    ref_match: dict = {}
+    if cutoff is not None:
+        ref_match["created_at"] = {"$gte": cutoff.isoformat()}
+    ref_pipeline = [
+        {"$match": ref_match} if ref_match else {"$match": {}},
+        {"$group": {"_id": "$referrer_id", "count": {"$sum": 1}}},
+    ]
+    ref_agg = await db.referrals.aggregate(ref_pipeline).to_list(500)
+    refs_by_user = {r["_id"]: int(r["count"]) for r in ref_agg}
+
     # Seed users — deterministic scaling per period (no random multiplier).
     seed = await db.leaderboard_seed.find({}, {"_id": 0}).to_list(100)
     period_scale = {"weekly": 0.15, "monthly": 0.45, "all_time": 1.0}[period]
@@ -1917,19 +1978,20 @@ async def get_leaderboard(user: CurrentUser, period: str = "weekly"):
             "balance": int(s["balance"] * period_scale),
             "referrals": s["referrals"], "tier": s["tier"], "is_user": False,
         })
-    # Real users (other than current) — use actual aggregated AED earned in window.
+    # Real users (other than current) — use actual aggregated AED earned in window
+    # plus their real referral count from db.referrals.
     others = await db.users.find({"user_id": {"$ne": user["user_id"]}}, {"_id": 0}).to_list(200)
     for o in others:
         bal = earned_by_user.get(o["user_id"], 0) if period != "all_time" else o.get("aed_balance", 0)
         pool.append({
             "name": o["name"], "avatar": o.get("picture"),
-            "balance": int(bal), "referrals": 0,
+            "balance": int(bal), "referrals": int(refs_by_user.get(o["user_id"], 0)),
             "tier": o.get("tier", "Member"), "is_user": False,
         })
     me_balance = earned_by_user.get(user["user_id"], 0) if period != "all_time" else user["aed_balance"]
     pool.append({
         "name": user["name"], "avatar": user.get("picture"),
-        "balance": int(me_balance), "referrals": 0,
+        "balance": int(me_balance), "referrals": int(refs_by_user.get(user["user_id"], 0)),
         "tier": user.get("tier", "Member"), "is_user": True,
     })
     pool.sort(key=lambda x: x["balance"], reverse=True)

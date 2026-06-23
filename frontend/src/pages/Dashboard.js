@@ -5,7 +5,7 @@ import ProgressRing from "@/components/common/ProgressRing";
 import BrandMark from "@/components/common/BrandMark";
 import {
   Hand, Bell, ArrowRight, ChevronRight, Star, Smartphone, IdCard, Calendar, PieChart,
-  UserPlus, Flag, Building2, Wallet, CheckCircle2, Gift, Sparkles, Check,
+  UserPlus, Flag, Building2, Wallet, CheckCircle2, Gift, Sparkles, Check, Zap,
 } from "lucide-react";
 
 const iconMap = { "user-plus": UserPlus, smartphone: Smartphone, "id-card": IdCard, calendar: Calendar, "pie-chart": PieChart, flag: Flag };
@@ -153,11 +153,18 @@ const Dashboard = () => {
                 <div className="h-full bg-gradient-to-r from-[#22C55E] to-[#16A34A]" style={{ width: `${nextMilestonePct}%` }} />
               </div>
             </div>
-          <button
-            onClick={() => navigate("/progress")}
-            data-testid="dashboard-continue-journey-btn"
-            className="mt-6 w-full btn-ghost border-[#8CFF2E]/30 text-[#8CFF2E] hover:border-[#8CFF2E]"
-          >Continue Journey <ArrowRight size={16} /></button>
+          <div className="grid grid-cols-2 gap-2 mt-6">
+            <button
+              onClick={() => navigate("/progress")}
+              data-testid="dashboard-continue-journey-btn"
+              className="btn-gold !py-3 text-[13px]"
+            >Go to action <ArrowRight size={14} /></button>
+            <button
+              onClick={() => navigate("/benefits-ladder#topup")}
+              data-testid="dashboard-topup-btn"
+              className="btn-ghost !py-3 text-[13px] border-[#8CFF2E]/30 text-[#8CFF2E] hover:border-[#8CFF2E]"
+            ><Zap size={14} /> Top up AED</button>
+          </div>
           </div>
         )}
 

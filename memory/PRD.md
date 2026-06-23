@@ -123,6 +123,16 @@ currency surface. Personalization based on user stage at all times.
 - **"Made with Emergent" badge removed** site-wide (web + mobile responsive + Capacitor) via `display:none` on `#emergent-badge` plus belt-and-suspenders CSS in `index.css`.
 - **Email CTA URLs**: replaced one hardcoded `"https://onex.club"` with `_app_url(request)`; all transactional email CTAs now route to `https://club.onex.exchange`.
 
+## What's implemented (2026-06-23 — 8 P0 polish batch)
+- **Removed Framer admin section** from Invite & Earn (developer-only embed code, irrelevant to members).
+- **Real referral counts in Leaderboard**: `/api/leaderboard` now aggregates `db.referrals` per period; "Your standing" pill + "+X Referrals" widget reflect actual user count (no more fake `+0`).
+- **Webinar milestone now requires 2 attendances** (`auto_complete_data_milestones` updated). Single attendance no longer auto-completes — keeps the 12-step journey honest.
+- **Dynamic "Ways to get there" tier modal**: new `GET /api/tier-progress` endpoint surfaces live referrals/webinars/balance state. `LevelDetailModal` shows ✓ green for completed actions and "+X more needed" for pending. **Pytest suite (8/8 passing)** covers Member/Insider/Co-Owner/Pro-Owner pass-conditions: `/app/backend/tests/test_tier_progress.py`.
+- **Property "Waitlist Joined" distinct UI**: amber-orange pill instead of duplicate lime-green; clicking it opens centered "You're on the list ✓" modal with a **"Remind me via email"** CTA → calls `POST /api/properties/remind` → `send_property_reminder_email()` template fires from Brevo.
+- **Modals always center on viewport**: `LevelDetailModal` and `WaitlistJoinedModal` now render through `createPortal(document.body)` so transformed ancestors can't break `position:fixed`. Body scroll locked while open.
+- **Dashboard + MyProgress "Next Reward" CTAs**: card now shows two buttons — primary "Go to action →" (deep-links to the page where the next milestone can be completed) + secondary "⚡ Top up AED" (jumps to `/benefits-ladder#topup`).
+- **Benefits Ladder horizontal connector centered + animated**: line now passes through icon vertical midpoints (top:56px, runs from 12.5%→87.5% horizontal — true icon-center to icon-center). New `onex-shimmer-sweep` keyframe sweeps a lime gradient along the line continuously to draw the eye toward the next tier. Honors `prefers-reduced-motion`.
+
 ## Backlog (P1)
 - India region segment: AED/INR switch, 0.1g pure 999 gold-coin SIP (15-day), Razorpay/UPI, Goa tokenized real estate flow, OneX Wealth Club shipping kit.
 - Stripe LIVE (currently DUMMY); production checkout + webhook receipts.

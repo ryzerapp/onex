@@ -51,7 +51,7 @@ const STATUS_STYLES = {
   upcoming: { color: "#71717A", bg: "#1E1F24", label: "Upcoming" },
 };
 
-const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, allDone, onCtaClick }) => {
+const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, allDone, onCtaClick, onTopupClick, onGoToAction }) => {
   if (!nextReward) return null;
 
   if (nextReward.kind === "maxed") {
@@ -122,6 +122,30 @@ const NextRewardCard = ({ nextReward, percent, completedCount, total, balance, a
       <div className="text-right text-[11px] text-zinc-500 mt-2 tabular-nums">{completedCount} / {total} completed</div>
       {allDone && (
         <div className="mt-3 text-[12px] text-[#22C55E]">Journey complete — keep earning AED to unlock the next tier.</div>
+      )}
+
+      {/* Quick-action CTAs — make the next milestone immediately actionable. */}
+      {!allDone && (onGoToAction || onTopupClick) && (
+        <div className="grid grid-cols-2 gap-2 mt-5">
+          {onGoToAction && (
+            <button
+              onClick={onGoToAction}
+              data-testid="next-reward-go-action"
+              className="btn-gold !py-3 text-[13px]"
+            >
+              Go to action <ArrowRight size={14} />
+            </button>
+          )}
+          {onTopupClick && (
+            <button
+              onClick={onTopupClick}
+              data-testid="next-reward-topup"
+              className="btn-ghost !py-3 text-[13px] border-[#8CFF2E]/30 text-[#8CFF2E] hover:border-[#8CFF2E]"
+            >
+              <Zap size={14} /> Top up AED
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -297,6 +321,17 @@ const MyProgress = () => {
             balance={data.aed_balance}
             allDone={data.all_milestones_done}
             onCtaClick={() => navigate("/benefits-ladder")}
+            onTopupClick={() => navigate("/benefits-ladder#topup")}
+            onGoToAction={() => {
+              // Send the user to the page where they can complete the *next* milestone.
+              const next = data.milestones?.find((m) => m.status === "pending");
+              if (!next) { navigate("/benefits-ladder"); return; }
+              const route =
+                AUTO_ROUTE[next.id]?.route ||
+                MANUAL_ROUTE[next.id]?.route ||
+                "/progress";
+              navigate(route);
+            }}
           />
           <div className="onex-card p-6" data-testid="need-help-card">
             <div className="flex items-center gap-2 text-[#A78BFA]"><Headphones size={16} /><span className="text-[13px] font-medium">Need Help?</span></div>

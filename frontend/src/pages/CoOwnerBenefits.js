@@ -327,7 +327,7 @@ const CoOwnerBenefits = () => {
         tier={activeTier}
         currentBalance={balance}
         onClose={() => setActiveTier(null)}
-        onAction={(a) => { setActiveTier(null); navigate(a.route.replace("#topup", "")); }}
+        onAction={(a) => { setActiveTier(null); navigate("/benefits-ladder#topup"); }}
       />
     </div>
   );

@@ -179,6 +179,26 @@ a[href*="emergent.sh"][target="_blank"] {
   height: 0 !important;
 }
 
+/* Animated lime sweep that runs along the Benefits Ladder connector line — draws
+   the eye toward the next tier and signals "you can keep climbing". */
+@keyframes onexShimmerSweep {
+  0%   { transform: translateX(-100%); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateX(400%); opacity: 0; }
+}
+.onex-shimmer-sweep {
+  background: linear-gradient(90deg,
+    rgba(140, 255, 46, 0) 0%,
+    rgba(140, 255, 46, 0.55) 50%,
+    rgba(140, 255, 46, 0) 100%);
+  filter: blur(1px);
+  animation: onexShimmerSweep 2.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .onex-shimmer-sweep { animation: none; opacity: 0; }
+}
+
 /* Larger touch targets for primary buttons on mobile. */
 @media (max-width: 767px) {
   .btn-gold, .btn-ghost { padding: 12px 18px; font-size: 13.5px; min-height: 44px; }

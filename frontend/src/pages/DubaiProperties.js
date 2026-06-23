@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "@/api";
 import { toast } from "sonner";
 import { devDebug } from "@/lib/devDebug";
-import { Heart, MapPin, Info, ArrowRight, Filter, ListOrdered, Gift, BarChart3, Globe2, TrendingUp, ShieldCheck } from "lucide-react";
+import { Heart, MapPin, Info, ArrowRight, Filter, ListOrdered, Gift, BarChart3, Globe2, TrendingUp, ShieldCheck, Check, Bell, X, Mail } from "lucide-react";
 
 const CATEGORIES = [
   { id: "all", label: "All Properties" },
@@ -13,9 +14,82 @@ const CATEGORIES = [
   { id: "hospitality", label: "Hospitality" },
 ];
 
+/** Centered "You're already on the waitlist" modal with one-click email reminder.
+ *  Rendered via a portal in `Modal.js` so it always centers on the viewport. */
+const WaitlistJoinedModal = ({ property, onClose }) => {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const remind = async () => {
+    setSending(true);
+    try {
+      await api.post("/properties/remind", { property_id: property.id });
+      setSent(true);
+      toast.success("Reminder set — we'll email you the moment allocation opens.");
+    } catch (e) {
+      toast.error("Couldn't set reminder. Try again in a moment.");
+      devDebug("[remind] failed", e);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const node = (
+    <div
+      data-testid="waitlist-joined-modal"
+      className="fixed inset-0 z-[100] grid place-items-center bg-black/70 backdrop-blur-sm fade-in p-6"
+      onClick={onClose}
+    >
+      <div
+        className="onex-card max-w-md w-full p-7 relative"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          data-testid="waitlist-joined-close"
+          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center"
+        >
+          <X size={16} className="text-zinc-300" />
+        </button>
+
+        <div className="w-14 h-14 rounded-2xl bg-[#F59E0B]/15 border border-[#F59E0B]/40 flex items-center justify-center">
+          <Check size={22} className="text-[#F59E0B]" />
+        </div>
+        <h3 className="text-[22px] font-display tracking-tight text-white mt-5 leading-tight">
+          You{"\u2019"}re on the list ✓
+        </h3>
+        <p className="text-zinc-400 text-[14px] mt-2 leading-relaxed">
+          You{"\u2019"}ve already joined the waitlist for <span className="text-white font-medium">{property.name}</span>.
+          {" "}<span className="text-[#8CFF2E]">{property.waitlist_count}+ members</span> are queued for {property.spots_total} spots.
+          Members get a 24-hour priority window before the public release.
+        </p>
+
+        <button
+          onClick={remind}
+          disabled={sending || sent}
+          data-testid="waitlist-remind-btn"
+          className={`mt-6 w-full ${sent ? "btn-ghost border-[#22C55E]/40 text-[#22C55E]" : "btn-gold"}`}
+        >
+          {sent
+            ? <><Mail size={16} /> Reminder sent to your inbox</>
+            : sending
+              ? <><Bell size={16} /> Sending…</>
+              : <><Bell size={16} /> Remind me via email</>}
+        </button>
+        <p className="text-[12px] text-zinc-500 mt-3 text-center">
+          We{"\u2019"}ll only ping you when allocation opens. No spam. Promise.
+        </p>
+      </div>
+    </div>
+  );
+
+  return typeof document !== "undefined" ? createPortal(node, document.body) : node;
+};
+
 const DubaiProperties = () => {
   const [category, setCategory] = useState("all");
   const [properties, setProperties] = useState([]);
+  const [waitlistedProperty, setWaitlistedProperty] = useState(null);
 
   const load = useCallback((cat = category) => api.get(`/properties${cat && cat !== "all" ? `?category=${cat}` : ""}`).then(({ data }) => {
     setProperties(data.properties);
@@ -27,6 +101,11 @@ const DubaiProperties = () => {
   useEffect(() => { load(category); }, [category, load]);
 
   const join = async (p) => {
+    // If already joined → show the centered "remind me" modal instead of re-posting.
+    if (p.joined_waitlist) {
+      setWaitlistedProperty(p);
+      return;
+    }
     try { await api.post("/properties/waitlist", { property_id: p.id }); toast.success(`Joined waitlist for ${p.name}`); load(category); }
     catch { toast.error("Could not join waitlist"); }
   };
@@ -102,8 +181,18 @@ const DubaiProperties = () => {
                     <div className="text-[#22C55E] font-semibold text-[14px] mt-1">{p.spots_available} / {p.spots_total}</div>
                   </div>
                 </div>
-                <button onClick={() => join(p)} disabled={p.joined_waitlist} data-testid={`property-join-${p.id}`} className={`mt-5 w-full btn-gold ${p.joined_waitlist ? "opacity-70 cursor-default" : ""}`}>
-                  {p.joined_waitlist ? "Waitlist Joined" : "Join Waitlist"} <ArrowRight size={14} />
+                <button
+                  onClick={() => join(p)}
+                  data-testid={`property-join-${p.id}`}
+                  className={`mt-5 w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full text-[14px] font-semibold transition-all ${
+                    p.joined_waitlist
+                      ? "bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/40 hover:bg-[#F59E0B]/25"
+                      : "btn-gold"
+                  }`}
+                >
+                  {p.joined_waitlist
+                    ? <><Check size={14} /> Waitlist Joined · Remind me</>
+                    : <>Join Waitlist <ArrowRight size={14} /></>}
                 </button>
                 <div className="mt-4 flex items-center gap-2 text-zinc-500 text-[12px]">
                   <div className="flex -space-x-2">
@@ -166,6 +255,13 @@ const DubaiProperties = () => {
           </div>
         </div>
       </div>
+
+      {waitlistedProperty && (
+        <WaitlistJoinedModal
+          property={waitlistedProperty}
+          onClose={() => setWaitlistedProperty(null)}
+        />
+      )}
     </div>
   );
 };
