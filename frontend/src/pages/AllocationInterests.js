@@ -33,11 +33,11 @@ const AllocationInterests = () => {
           <p className="text-zinc-400 mt-2 text-[15px]">Choose the types of properties you’re most interested in.</p>
         </div>
         <div className="onex-card p-5 max-w-sm flex items-center gap-4" data-testid="why-set-interests-card">
-          <div className="w-12 h-12 rounded-full bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center"><Sparkles size={16} className="text-[#FACC15]" /></div>
+          <div className="w-12 h-12 rounded-full bg-[#1F3008] border border-[#8CFF2E]/30 flex items-center justify-center"><Sparkles size={16} className="text-[#8CFF2E]" /></div>
           <div>
             <div className="text-white text-[14px] font-medium">Why set your interests?</div>
             <div className="text-zinc-500 text-[12px] mt-1">We’ll prioritize opportunities that match your preferences.</div>
-            <button className="mt-2 text-[#FACC15] text-[12px] hover:underline flex items-center gap-1" data-testid="learn-more-interests-btn">Learn More <ArrowRight size={12} /></button>
+            <button className="mt-2 text-[#8CFF2E] text-[12px] hover:underline flex items-center gap-1" data-testid="learn-more-interests-btn">Learn More <ArrowRight size={12} /></button>
           </div>
         </div>
       </div>
@@ -56,13 +56,13 @@ const AllocationInterests = () => {
               key={c.id}
               onClick={() => toggle(c.id)}
               data-testid={`category-${c.id}`}
-              className={`onex-card relative overflow-hidden text-left transition-all ${isSelected ? "ring-2 ring-[#FACC15] !border-[#FACC15]" : "hover:border-[#FACC15]/30"}`}
+              className={`onex-card relative overflow-hidden text-left transition-all ${isSelected ? "ring-2 ring-[#8CFF2E] !border-[#8CFF2E]" : "hover:border-[#8CFF2E]/30"}`}
             >
               <div className="relative h-44">
                 <img src={c.image} alt={c.name} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0B] via-[#0A0A0B]/40 to-transparent" />
-                <div className="absolute top-3 left-3 w-10 h-10 rounded-full bg-[#FACC15]/15 border border-[#FACC15]/30 backdrop-blur-md flex items-center justify-center"><Icon size={16} className="text-[#FACC15]" /></div>
-                <div className={`absolute top-3 right-3 w-7 h-7 rounded-full border flex items-center justify-center transition-all ${isSelected ? "onex-gold-fill border-[#FACC15]" : "bg-black/40 border-white/20"}`}>
+                <div className="absolute top-3 left-3 w-10 h-10 rounded-full bg-[#8CFF2E]/15 border border-[#8CFF2E]/30 backdrop-blur-md flex items-center justify-center"><Icon size={16} className="text-[#8CFF2E]" /></div>
+                <div className={`absolute top-3 right-3 w-7 h-7 rounded-full border flex items-center justify-center transition-all ${isSelected ? "onex-gold-fill border-[#8CFF2E]" : "bg-black/40 border-white/20"}`}>
                   {isSelected && <Check size={14} />}
                 </div>
               </div>
@@ -107,7 +107,7 @@ const AllocationInterests = () => {
         </div>
 
         <div className="onex-card p-6" data-testid="how-it-works-card">
-          <div className="flex items-center gap-2 text-[#FACC15] mb-3"><Lightbulb size={16} /><span className="font-medium">How it works</span></div>
+          <div className="flex items-center gap-2 text-[#8CFF2E] mb-3"><Lightbulb size={16} /><span className="font-medium">How it works</span></div>
           {[
             { icon: Target, title: "We match opportunities", body: "Get early access to properties that match your interests." },
             { icon: Bell, title: "You stay updated", body: "Receive alerts for launches and high-return opportunities." },
@@ -116,7 +116,7 @@ const AllocationInterests = () => {
             const Icon = b.icon;
             return (
               <div key={b.title} className="flex gap-3 mt-4">
-                <div className="w-10 h-10 rounded-2xl bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center shrink-0"><Icon size={16} className="text-[#FACC15]" /></div>
+                <div className="w-10 h-10 rounded-2xl bg-[#1F3008] border border-[#8CFF2E]/30 flex items-center justify-center shrink-0"><Icon size={16} className="text-[#8CFF2E]" /></div>
                 <div>
                   <div className="text-white text-[14px] font-medium">{b.title}</div>
                   <div className="text-zinc-500 text-[12px] mt-1">{b.body}</div>

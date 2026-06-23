@@ -2,9 +2,10 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { useNavigate } from "react-router-dom";
 import ProgressRing from "@/components/common/ProgressRing";
+import BrandMark from "@/components/common/BrandMark";
 import {
   Hand, Bell, ArrowRight, ChevronRight, Star, Smartphone, IdCard, Calendar, PieChart,
-  UserPlus, Flag, Building2, Wallet, CheckCircle2, Gift,
+  UserPlus, Flag, Building2, Wallet, CheckCircle2, Gift, Sparkles, Check,
 } from "lucide-react";
 
 const iconMap = { "user-plus": UserPlus, smartphone: Smartphone, "id-card": IdCard, calendar: Calendar, "pie-chart": PieChart, flag: Flag };
@@ -37,10 +38,10 @@ const ActivityIcon = ({ kind }) => {
   const map = {
     milestone: { Icon: CheckCircle2, color: "#22C55E" },
     webinar: { Icon: Calendar, color: "#A78BFA" },
-    join: { Icon: Star, color: "#FACC15" },
-    waitlist: { Icon: Building2, color: "#FACC15" },
+    join: { Icon: Star, color: "#8CFF2E" },
+    waitlist: { Icon: Building2, color: "#8CFF2E" },
   };
-  const { Icon, color } = map[kind] || { Icon: Gift, color: "#FACC15" };
+  const { Icon, color } = map[kind] || { Icon: Gift, color: "#8CFF2E" };
   return <Icon size={16} style={{ color }} />;
 };
 
@@ -64,32 +65,33 @@ const Dashboard = () => {
     <div data-testid="dashboard-page">
       {/* Header */}
       <div className="flex items-start justify-between gap-6 flex-wrap">
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display tracking-tight text-white flex items-center gap-3">
             Welcome back, {user.name.split(" ")[0]}!
-            <Hand className="text-[#FACC15]" size={32} />
+            <Hand className="text-[#8CFF2E]" size={32} />
           </h1>
           <p className="text-zinc-400 mt-3 text-[15px]">Your journey to co-ownership starts here.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <button data-testid="dashboard-notifications-btn" className="relative w-11 h-11 rounded-full border border-[#27272A] bg-[#15161A] hover:bg-[#1E1F24] transition-all flex items-center justify-center">
+        <div className="flex items-center gap-4 w-full lg:w-auto">
+          {/* Desktop-only Bell — mobile bell lives in MobileTopBar */}
+          <button data-testid="dashboard-notifications-btn" className="hidden lg:flex relative w-11 h-11 rounded-full border border-[#27272A] bg-[#15161A] hover:bg-[#1E1F24] transition-all items-center justify-center">
             <Bell size={16} className="text-zinc-300" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#FACC15]" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#8CFF2E]" />
           </button>
           <button
             onClick={() => navigate("/benefits-ladder")}
             data-testid="dashboard-balance-pill"
-            className="onex-card flex items-center gap-3 px-5 py-3 hover:border-[#FACC15]/40 transition-all"
+            className="onex-card flex items-center gap-3 px-5 py-3 hover:border-[#8CFF2E]/40 transition-all w-full lg:w-auto"
           >
-            <div className="w-11 h-11 rounded-2xl onex-gold-fill flex items-center justify-center">
+            <div className="w-11 h-11 rounded-2xl onex-gold-fill flex items-center justify-center flex-shrink-0">
               <Wallet size={18} />
             </div>
-            <div className="text-left">
+            <div className="text-left flex-1 min-w-0">
               <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Co-Owner Credits Balance</div>
-              <div className="text-[20px] font-semibold text-[#FACC15] leading-none mt-1">AED {user.aed_balance}</div>
+              <div className="text-[20px] font-semibold text-[#8CFF2E] leading-none mt-1">AED {user.aed_balance}</div>
               <div className="text-[11px] text-zinc-500 mt-1">Reduce effective entry on upcoming assets</div>
             </div>
-            <ChevronRight size={16} className="text-zinc-500" />
+            <ChevronRight size={16} className="text-zinc-500 flex-shrink-0" />
           </button>
         </div>
       </div>
@@ -113,8 +115,8 @@ const Dashboard = () => {
                     : `AED ${next_reward?.amount} until your next tier unlocks.`}
                 </p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-[#3A2F0F] border border-[#FACC15]/30 flex items-center justify-center">
-                <Star size={22} className="text-[#FACC15]" />
+              <div className="w-14 h-14 rounded-2xl bg-[#1F3008] border border-[#8CFF2E]/30 flex items-center justify-center">
+                <Star size={22} className="text-[#8CFF2E]" />
               </div>
             </div>
             <div className="mt-6">
@@ -122,7 +124,7 @@ const Dashboard = () => {
                 <span>AED {user.aed_balance} / AED {next_reward?.tier_threshold || next_tier.threshold}</span>
               </div>
               <div className="h-2 mt-2 rounded-full bg-[#27272A] overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-[#FACC15] to-[#EAB308]" style={{ width: `${tierPct}%` }} />
+                <div className="h-full bg-gradient-to-r from-[#8CFF2E] to-[#6DDB1E]" style={{ width: `${tierPct}%` }} />
               </div>
             </div>
             <button
@@ -154,7 +156,7 @@ const Dashboard = () => {
           <button
             onClick={() => navigate("/progress")}
             data-testid="dashboard-continue-journey-btn"
-            className="mt-6 w-full btn-ghost border-[#FACC15]/30 text-[#FACC15] hover:border-[#FACC15]"
+            className="mt-6 w-full btn-ghost border-[#8CFF2E]/30 text-[#8CFF2E] hover:border-[#8CFF2E]"
           >Continue Journey <ArrowRight size={16} /></button>
           </div>
         )}
@@ -164,10 +166,10 @@ const Dashboard = () => {
           <div className="onex-card p-6 sm:p-7" data-testid="dashboard-property-spotlight">
             <div className="flex items-start gap-5">
               <div className="flex-1">
-                <div className="text-[12px] uppercase tracking-[0.18em] text-zinc-500">Upcoming Property Launch</div>
+                <div className="text-[12px] uppercase tracking-[0.18em] text-[#8CFF2E] flex items-center gap-2"><Sparkles size={11} /> Upcoming Property Launch</div>
                 <h3 className="text-[22px] font-semibold text-white mt-3 leading-tight">{spotlight_property.name}</h3>
                 <div className="flex items-center gap-2 mt-2 text-zinc-400 text-[13px]">
-                  <Calendar size={14} className="text-[#FACC15]" />
+                  <Calendar size={14} className="text-[#8CFF2E]" />
                   <span>{new Date(spotlight_property.launch_date).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
                 <div className="grid grid-cols-4 gap-2 mt-6">
@@ -176,11 +178,22 @@ const Dashboard = () => {
               </div>
               <img src={spotlight_property.image} alt={spotlight_property.name} className="w-24 h-32 object-cover rounded-2xl border border-[#27272A]" />
             </div>
+
+            {/* Why this matters — value props for the user */}
+            <div className="mt-5 rounded-2xl border border-[#27272A] bg-[#0A0A0B] p-4">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500 mb-2">Why join the waitlist now</div>
+              <ul className="space-y-1.5 text-[12.5px] text-zinc-300">
+                <li className="flex items-start gap-2"><Check size={13} className="text-[#8CFF2E] mt-0.5 flex-shrink-0" /> 24-hour <span className="text-white">priority window</span> before the public release.</li>
+                <li className="flex items-start gap-2"><Check size={13} className="text-[#8CFF2E] mt-0.5 flex-shrink-0" /> Your AED credits <span className="text-white">reduce the effective entry</span> on this asset.</li>
+                <li className="flex items-start gap-2"><Check size={13} className="text-[#8CFF2E] mt-0.5 flex-shrink-0" /> Limited to <span className="text-white">{spotlight_property.units_available || "12"} co-owner slots</span> — first to allocate wins.</li>
+              </ul>
+            </div>
+
             <button
               onClick={() => navigate("/properties")}
               data-testid="dashboard-view-property-btn"
-              className="mt-6 w-full btn-ghost border-[#FACC15]/30 text-[#FACC15] hover:border-[#FACC15]"
-            >View Details <ArrowRight size={16} /></button>
+              className="mt-5 w-full btn-gold"
+            >Join the Launch Waitlist <ArrowRight size={16} /></button>
           </div>
         )}
 
@@ -192,20 +205,20 @@ const Dashboard = () => {
               <h3 className="text-[22px] font-semibold text-white mt-3">{user.tier}</h3>
               <p className="text-zinc-400 text-[13px] mt-1.5">AED {next_tier.remaining} more to reach {next_tier.name}</p>
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-[#FACC15]/10 border border-[#FACC15]/30 flex items-center justify-center">
-              <Star size={22} className="text-[#FACC15]" />
+            <div className="w-14 h-14 rounded-2xl bg-[#8CFF2E]/10 border border-[#8CFF2E]/30 flex items-center justify-center">
+              <Star size={22} className="text-[#8CFF2E]" />
             </div>
           </div>
           <div className="mt-6">
             <div className="h-2 rounded-full bg-[#27272A] overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-[#FACC15] to-[#EAB308]" style={{ width: `${tierPct}%` }} />
+              <div className="h-full bg-gradient-to-r from-[#8CFF2E] to-[#6DDB1E]" style={{ width: `${tierPct}%` }} />
             </div>
             <div className="text-right text-[12px] text-zinc-500 mt-2 tabular-nums">{user.aed_balance} / {next_tier.threshold}</div>
           </div>
           <button
             onClick={() => navigate("/benefits-ladder")}
             data-testid="dashboard-view-benefits-btn"
-            className="mt-4 w-full btn-ghost border-[#FACC15]/30 text-[#FACC15] hover:border-[#FACC15]"
+            className="mt-4 w-full btn-ghost border-[#8CFF2E]/30 text-[#8CFF2E] hover:border-[#8CFF2E]"
           >View Benefits Ladder <ArrowRight size={16} /></button>
         </div>
       </div>
@@ -215,7 +228,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mt-5">
         {[
           { title: "Continue Journey", subtitle: "Complete the next steps in your co-ownership journey.", icon: Flag, color: "#22C55E", bg: "#1F3A2D", route: "/progress", testId: "quick-action-continue-journey" },
-          { title: "Explore Properties", subtitle: "Browse exclusive Dubai properties and investment opportunities.", icon: Building2, color: "#FACC15", bg: "#3A2F0F", route: "/properties", testId: "quick-action-explore-properties" },
+          { title: "Explore Properties", subtitle: "Browse exclusive Dubai properties and investment opportunities.", icon: Building2, color: "#8CFF2E", bg: "#1F3008", route: "/properties", testId: "quick-action-explore-properties" },
           { title: "Invite Friends", subtitle: "Invite friends and earn AED 50 when they complete basic KYC.", icon: UserPlus, color: "#A78BFA", bg: "#2A1F4A", route: "/invite", testId: "quick-action-invite-friends" },
           { title: "Register Webinar", subtitle: "Join upcoming webinars and learn from industry experts.", icon: Calendar, color: "#60A5FA", bg: "#1E2D4A", route: "/webinars", testId: "quick-action-register-webinar" },
         ].map((a) => {
@@ -225,7 +238,7 @@ const Dashboard = () => {
               key={a.title}
               onClick={() => navigate(a.route)}
               data-testid={a.testId}
-              className="onex-card p-6 text-left hover:-translate-y-1 hover:border-[#FACC15]/30 transition-all flex flex-col justify-between min-h-[200px]"
+              className="onex-card p-6 text-left hover:-translate-y-1 hover:border-[#8CFF2E]/30 transition-all flex flex-col justify-between min-h-[200px]"
             >
               <div>
                 <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: a.bg, border: `1px solid ${a.color}44` }}>
@@ -248,8 +261,8 @@ const Dashboard = () => {
           <h2 className="text-2xl font-display tracking-tight text-white">At a Glance</h2>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
             {[
-              { label: "Co-Owner Credits", value: `AED ${stats.aed_balance}`, tag: `+AED ${stats.balance_this_week} this week`, color: "#FACC15", icon: Wallet },
-              { label: "Investments Interested", value: `${stats.interests_count} / ${stats.interests_total}`, tag: "Allocation saved", color: "#FACC15", icon: PieChart },
+              { label: "Co-Owner Credits", value: `AED ${stats.aed_balance}`, tag: `+AED ${stats.balance_this_week} this week`, color: "#8CFF2E", icon: Wallet },
+              { label: "Investments Interested", value: `${stats.interests_count} / ${stats.interests_total}`, tag: "Allocation saved", color: "#8CFF2E", icon: PieChart },
               { label: "Webinars Attended", value: `${stats.webinars_attended}`, tag: "Keep learning", color: "#A78BFA", icon: Calendar },
               { label: "Friends Invited", value: `${stats.friends_invited}`, tag: `+${stats.friends_invited} this week`, color: "#22C55E", icon: UserPlus },
             ].map((s) => {
@@ -271,7 +284,7 @@ const Dashboard = () => {
         <div>
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-display tracking-tight text-white">Recent Activity</h2>
-            <button data-testid="recent-activity-view-all" className="text-[12px] text-zinc-400 hover:text-white flex items-center gap-1">View All <ChevronRight size={12} /></button>
+            <button onClick={() => navigate("/activity")} data-testid="recent-activity-view-all" className="text-[12px] text-zinc-400 hover:text-white flex items-center gap-1">View All <ChevronRight size={12} /></button>
           </div>
           <div className="onex-card-soft p-2 mt-5 divide-y divide-[#27272A]">
             {(recent_activity?.length ? recent_activity : [{ id: "x", kind: "welcome", title: "Welcome to OneX Club", reward: 100, created_at: new Date().toISOString() }]).slice(0, 5).map((a) => (
@@ -283,7 +296,7 @@ const Dashboard = () => {
                   <div className="text-[13px] text-white truncate">{a.title}</div>
                   <div className="text-[11px] text-zinc-500">{new Date(a.created_at).toLocaleString("en-US", { dateStyle: "medium" })}</div>
                 </div>
-                {a.reward > 0 && <div className="text-[12px] font-semibold text-[#FACC15]">+AED {a.reward}</div>}
+                {a.reward > 0 && <div className="text-[12px] font-semibold text-[#8CFF2E]">+AED {a.reward}</div>}
               </div>
             ))}
           </div>
@@ -292,7 +305,7 @@ const Dashboard = () => {
 
       {/* Footer banner */}
       <div className="onex-card mt-12 p-6 sm:p-8 flex items-center gap-6 flex-wrap" data-testid="dashboard-footer-banner">
-        <div className="w-14 h-14 rounded-2xl onex-gold-fill flex items-center justify-center font-bold text-xl">1X</div>
+        <BrandMark size={56} glow />
         <div className="flex-1 min-w-[260px]">
           <h3 className="text-[18px] font-semibold text-white">Exclusive Co-Ownership. High-Yield Assets. Premium Benefits.</h3>
           <p className="text-zinc-400 text-[13px] mt-1">OneX Club is your gateway to Dubai’s most exclusive real estate opportunities.</p>

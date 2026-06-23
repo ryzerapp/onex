@@ -11,7 +11,7 @@ const ProtectedRoute = ({ children }) => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" data-testid="route-loader">
-        <Loader2 className="animate-spin text-[#FACC15]" size={20} />
+        <Loader2 className="animate-spin text-[#8CFF2E]" size={20} />
       </div>
     );
   }

@@ -24,7 +24,10 @@ const AuthCallback = () => {
         return;
       }
       try {
-        const { data } = await api.post("/auth/session", { session_id: sessionId });
+        let ref = null;
+        try { ref = sessionStorage.getItem("onex_ref"); } catch (e) { /* noop */ }
+        const { data } = await api.post("/auth/session", { session_id: sessionId, ref });
+        try { sessionStorage.removeItem("onex_ref"); } catch (e) { /* noop */ }
         setUser(data.user);
         // Strip the fragment and go to dashboard
         window.history.replaceState({}, document.title, "/dashboard");

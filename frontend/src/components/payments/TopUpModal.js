@@ -62,9 +62,10 @@ const TopUpModal = ({ open, onClose }) => {
           <X size={16} className="text-zinc-300" />
         </button>
 
-        <div className="flex items-center gap-2 text-[#FACC15]">
+        <div className="flex items-center gap-2 text-[#8CFF2E]">
           <Sparkles size={16} />
           <span className="text-[12px] uppercase tracking-[0.18em] font-medium">Top up AED Balance</span>
+          <span className="onex-pill bg-[#A78BFA]/15 text-[#A78BFA] !text-[10px]" data-testid="topup-dummy-badge">Test Mode · No card needed</span>
         </div>
         <h2 className="text-3xl font-display tracking-tight text-white mt-3 leading-tight">
           Unlock the next tier — today.
@@ -81,13 +82,13 @@ const TopUpModal = ({ open, onClose }) => {
                 key={p.id}
                 onClick={() => setSelected(p.id)}
                 data-testid={`topup-pkg-${p.id}`}
-                className={`onex-card-soft p-5 text-left transition-all relative ${isSelected ? "ring-2 ring-[#FACC15] !border-[#FACC15]" : "hover:border-[#FACC15]/30"}`}
+                className={`onex-card-soft p-5 text-left transition-all relative ${isSelected ? "ring-2 ring-[#8CFF2E] !border-[#8CFF2E]" : "hover:border-[#8CFF2E]/30"}`}
               >
                 {p.id === "pro" && (
                   <span className="absolute -top-2 -right-2 onex-pill onex-gold-fill !text-[10px]">Best value</span>
                 )}
                 <div className="text-white text-[16px] font-semibold">{p.name}</div>
-                <div className="text-[#FACC15] text-[24px] font-display mt-2">+AED {p.aed.toLocaleString()}</div>
+                <div className="text-[#8CFF2E] text-[24px] font-display mt-2">+AED {p.aed.toLocaleString()}</div>
                 <div className="text-zinc-400 text-[13px] mt-1">${p.usd.toFixed(2)} USD</div>
                 <div className="text-zinc-500 text-[12px] mt-3">{p.tagline}</div>
                 {isSelected && (
@@ -101,8 +102,8 @@ const TopUpModal = ({ open, onClose }) => {
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-4 text-[12px] text-zinc-500">
-          <span>Secured by Stripe · Test mode</span>
-          <span>Card details never touch our servers.</span>
+          <span>Test mode active · No real charge</span>
+          <span>Production-ready Stripe handler behind a flag.</span>
         </div>
 
         <button
@@ -111,7 +112,7 @@ const TopUpModal = ({ open, onClose }) => {
           data-testid="topup-checkout-btn"
           className={`mt-5 w-full btn-gold !py-4 text-[15px] ${busy ? "opacity-70 cursor-wait" : ""}`}
         >
-          {busy ? (<><Loader2 size={16} className="animate-spin" /> Redirecting…</>) : (<>Continue to secure checkout <ArrowRight size={16} /></>)}
+          {busy ? (<><Loader2 size={16} className="animate-spin" /> Crediting AED…</>) : (<>Confirm test top-up <ArrowRight size={16} /></>)}
         </button>
       </div>
     </div>

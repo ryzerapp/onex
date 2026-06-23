@@ -11,11 +11,17 @@ from __future__ import annotations
 
 import logging
 import os
+import json
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Optional, Annotated
 
+import random
+import string
+
+import hashlib
+import hmac
 import httpx
 from dotenv import load_dotenv
 from emergentintegrations.payments.stripe.checkout import (
@@ -25,11 +31,13 @@ from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout,
 )
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
-from email_service import send_milestone_done, send_topup_receipt, send_welcome
+from email_service import send_milestone_done, send_topup_receipt, send_welcome, send_webinar_reminder, send_support_inbound, send_waitlist_welcome
+from brevo_client import upsert_contact as brevo_upsert_contact
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -55,7 +63,7 @@ class User(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
-    tier: str = "Cadet"
+    tier: str = "Member"
     aed_balance: int = 100
     referral_code: str
     referred_by: Optional[str] = None
@@ -64,21 +72,56 @@ class User(BaseModel):
 
 class SessionExchange(BaseModel):
     session_id: str
+    ref: Optional[str] = None
+
+
+class EmailStart(BaseModel):
+    email: str
+    ref: Optional[str] = None
+
+
+class EmailVerify(BaseModel):
+    email: str
+    code: str
+
+
+# Jitsi/JaaS (8x8.vc) room URL generator.
+JAAS_TENANT = "vpaas-magic-cookie-0df12bf583cb40bbb594a16083d20aaa"
+
+
+# Webinar live-window detection. A webinar is "Go Live" only inside its real start→end window.
+def _webinar_is_live(w: dict) -> bool:
+    if w.get("status") != "upcoming":
+        return False
+    try:
+        start = datetime.fromisoformat(w["date"].replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return False
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    end = start + timedelta(minutes=int(w.get("duration_minutes", 60)))
+    now = datetime.now(timezone.utc)
+    return start <= now <= end
+
+
+def _webinar_room_url(webinar_id: str) -> str:
+    slug = webinar_id.replace("_", "").lower()[:48]
+    return f"https://8x8.vc/{JAAS_TENANT}/OneX-{slug}"
 
 
 # -------------------- Tier helpers --------------------
+# Canonical 4-tier ladder. "Member" is also the default label for any balance < 500.
+# Order: Member (500) → Insider (2500) → Co-Owner (5000) → Pro-Owner (10000).
 TIERS = [
-    {"name": "Co-Owner Member", "threshold": 500, "key": "co_owner_member"},
-    {"name": "Priority Co-Owner", "threshold": 2500, "key": "priority"},
-    {"name": "Co-Owner Circle", "threshold": 5000, "key": "circle"},
-    {"name": "Elite Co-Owner", "threshold": 10000, "key": "elite"},
+    {"name": "Member",    "threshold": 500,   "key": "member"},
+    {"name": "Insider",   "threshold": 2500,  "key": "insider"},
+    {"name": "Co-Owner",  "threshold": 5000,  "key": "co_owner"},
+    {"name": "Pro-Owner", "threshold": 10000, "key": "pro_owner"},
 ]
 
 
 def compute_tier(balance: int) -> str:
-    if balance < 500:
-        return "Cadet"
-    name = "Cadet"
+    name = "Member"
     for t in TIERS:
         if balance >= t["threshold"]:
             name = t["name"]
@@ -89,7 +132,7 @@ def next_tier_info(balance: int):
     for t in TIERS:
         if balance < t["threshold"]:
             return {"name": t["name"], "threshold": t["threshold"], "remaining": t["threshold"] - balance}
-    return {"name": "Elite Co-Owner", "threshold": 10000, "remaining": 0}
+    return {"name": "Pro-Owner", "threshold": 10000, "remaining": 0}
 
 
 # -------------------- Auth helpers --------------------
@@ -214,11 +257,11 @@ CATEGORY_SEED = [
 ]
 
 WEBINAR_SEED = [
-    {"id": "wb_dubai_airbnb_master", "title": "Dubai Airbnb Masterclass", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-03-12T17:00:00Z", "duration_minutes": 60, "attendees": 412, "aed_reward": 25, "description": "Learn how to maximise yield from Dubai short-stay rentals.", "status": "upcoming", "featured": True},
-    {"id": "wb_yield_strategies", "title": "High-Yield Allocation Strategies", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-03-26T16:30:00Z", "duration_minutes": 75, "attendees": 268, "aed_reward": 25, "description": "Inside the OneX selection framework for top-tier yield assets.", "status": "upcoming"},
-    {"id": "wb_palm_villa_briefing", "title": "Palm Jumeirah Villa Briefing", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-04-08T17:00:00Z", "duration_minutes": 45, "attendees": 198, "aed_reward": 25, "description": "Allocation walkthrough for our flagship Palm Jumeirah collection.", "status": "upcoming"},
-    {"id": "wb_market_outlook", "title": "Dubai Market Outlook 2026", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/17238022/pexels-photo-17238022.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-01-14T17:00:00Z", "duration_minutes": 60, "attendees": 612, "aed_reward": 0, "description": "Macro analysis of Dubai real estate cycles.", "status": "recorded", "recording_url": "https://example.com/onex/market-outlook"},
-    {"id": "wb_co_ownership_101", "title": "Co-Ownership 101", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2025-12-05T17:00:00Z", "duration_minutes": 50, "attendees": 845, "aed_reward": 0, "description": "Foundational webinar on the OneX co-ownership model.", "status": "recorded", "recording_url": "https://example.com/onex/co-ownership-101"},
+    {"id": "wb_dubai_airbnb_master", "title": "Dubai Airbnb Masterclass", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/10647324/pexels-photo-10647324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-03-12T17:00:00Z", "duration_minutes": 60, "attendees": 412, "aed_reward": 25, "description": "Learn how to maximise yield from Dubai short-stay rentals.", "status": "upcoming", "featured": True, "luma_url": "https://luma.com/dveb7fpt"},
+    {"id": "wb_yield_strategies", "title": "High-Yield Allocation Strategies", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-03-26T16:30:00Z", "duration_minutes": 75, "attendees": 268, "aed_reward": 25, "description": "Inside the OneX selection framework for top-tier yield assets.", "status": "upcoming", "luma_url": "https://luma.com/dveb7fpt"},
+    {"id": "wb_palm_villa_briefing", "title": "Palm Jumeirah Villa Briefing", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "date": "2026-04-08T17:00:00Z", "duration_minutes": 45, "attendees": 198, "aed_reward": 25, "description": "Allocation walkthrough for our flagship Palm Jumeirah collection.", "status": "upcoming", "luma_url": "https://luma.com/dveb7fpt"},
+    {"id": "wb_market_outlook", "title": "Dubai Market Outlook 2026", "host": "Aisha Mohammed", "host_image": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/17238022/pexels-photo-17238022.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2026-01-14T17:00:00Z", "duration_minutes": 60, "attendees": 612, "aed_reward": 0, "description": "Macro analysis of Dubai real estate cycles.", "status": "recorded", "recording_url": "https://example.com/onex/market-outlook", "luma_url": "https://luma.com/dveb7fpt"},
+    {"id": "wb_co_ownership_101", "title": "Co-Ownership 101", "host": "Karthik Reddy", "host_image": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "date": "2025-12-05T17:00:00Z", "duration_minutes": 50, "attendees": 845, "aed_reward": 0, "description": "Foundational webinar on the OneX co-ownership model.", "status": "recorded", "recording_url": "https://example.com/onex/co-ownership-101", "luma_url": "https://luma.com/dveb7fpt"},
 ]
 
 UPDATES_SEED = [
@@ -229,24 +272,24 @@ UPDATES_SEED = [
 ]
 
 LEADERBOARD_SEED = [
-    {"name": "Hassan Al-Mansouri", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 8420, "referrals": 38, "tier": "Co-Owner Circle"},
-    {"name": "Priya Nair", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 6210, "referrals": 27, "tier": "Co-Owner Circle"},
-    {"name": "Rahul Mehta", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 4980, "referrals": 19, "tier": "Priority Co-Owner"},
-    {"name": "Sarah Lim", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 3420, "referrals": 14, "tier": "Priority Co-Owner"},
-    {"name": "Omar Khan", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2840, "referrals": 11, "tier": "Priority Co-Owner"},
-    {"name": "Maya Iyer", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2110, "referrals": 9, "tier": "Priority Co-Owner"},
-    {"name": "Daniel Park", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1685, "referrals": 7, "tier": "Co-Owner Member"},
-    {"name": "Anaya Sharma", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1240, "referrals": 5, "tier": "Co-Owner Member"},
+    {"name": "Hassan Al-Mansouri", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 8420, "referrals": 38, "tier": "Co-Owner"},
+    {"name": "Priya Nair", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 6210, "referrals": 27, "tier": "Co-Owner"},
+    {"name": "Rahul Mehta", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 4980, "referrals": 19, "tier": "Insider"},
+    {"name": "Sarah Lim", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 3420, "referrals": 14, "tier": "Insider"},
+    {"name": "Omar Khan", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2840, "referrals": 11, "tier": "Insider"},
+    {"name": "Maya Iyer", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 2110, "referrals": 9, "tier": "Member"},
+    {"name": "Daniel Park", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1685, "referrals": 7, "tier": "Member"},
+    {"name": "Anaya Sharma", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85", "balance": 1240, "referrals": 5, "tier": "Member"},
 ]
 
 CO_OWNER_BENEFITS_SEED = [
-    {"id": "ben_priority_alloc", "title": "Priority Allocation Access", "description": "24-hour early window on every new property launch.", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Co-Owner Member", "unlock_threshold": 500},
-    {"id": "ben_executive_qa", "title": "Executive Q&A Sessions", "description": "Monthly closed-door sessions with the OneX leadership.", "image": "https://images.pexels.com/photos/5778470/pexels-photo-5778470.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Priority Co-Owner", "unlock_threshold": 2500},
-    {"id": "ben_airport_transfer", "title": "Complimentary Airport Transfers", "description": "Chauffeured airport pickup on every Dubai visit.", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Priority Co-Owner", "unlock_threshold": 2500},
-    {"id": "ben_founder_briefing", "title": "Private Founder Briefings", "description": "Invite-only briefings with founders ahead of every launch.", "image": "https://images.unsplash.com/photo-1661354421565-74ffd9650918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzgxMzAxOTAxfDA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Co-Owner Circle", "unlock_threshold": 5000},
-    {"id": "ben_annual_stay", "title": "Complimentary Annual Stays", "description": "Two nights every year in your favorite OneX asset.", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Co-Owner Circle", "unlock_threshold": 5000},
-    {"id": "ben_relationship_manager", "title": "Dedicated Relationship Manager", "description": "A senior OneX advisor on call, anytime.", "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Elite Co-Owner", "unlock_threshold": 10000},
-    {"id": "ben_advisory_council", "title": "Advisory Council Access", "description": "Help shape the OneX roadmap as part of our advisory council.", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Elite Co-Owner", "unlock_threshold": 10000},
+    {"id": "ben_priority_alloc", "title": "Priority Allocation Access", "description": "24-hour early window on every new property launch.", "image": "https://images.unsplash.com/photo-1640877268187-2fa6b2ed7a5f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkdWJhaSUyMGx1eHVyeSUyMHJlYWwlMjBlc3RhdGUlMjBleHRlcmlvcnxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Member", "unlock_threshold": 500},
+    {"id": "ben_executive_qa", "title": "Executive Q&A Sessions", "description": "Monthly closed-door sessions with the OneX leadership.", "image": "https://images.pexels.com/photos/5778470/pexels-photo-5778470.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Insider", "unlock_threshold": 2500},
+    {"id": "ben_airport_transfer", "title": "Complimentary Airport Transfers", "description": "Chauffeured airport pickup on every Dubai visit.", "image": "https://images.pexels.com/photos/237371/pexels-photo-237371.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Insider", "unlock_threshold": 2500},
+    {"id": "ben_founder_briefing", "title": "Private Founder Briefings", "description": "Invite-only briefings with founders ahead of every launch.", "image": "https://images.unsplash.com/photo-1661354421565-74ffd9650918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MHx8fHwxNzgxMzAxOTAxfDA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Co-Owner", "unlock_threshold": 5000},
+    {"id": "ben_annual_stay", "title": "Complimentary Annual Stays", "description": "Two nights every year in your favorite OneX asset.", "image": "https://images.pexels.com/photos/30554306/pexels-photo-30554306.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Co-Owner", "unlock_threshold": 5000},
+    {"id": "ben_relationship_manager", "title": "Dedicated Relationship Manager", "description": "A senior OneX advisor on call, anytime.", "image": "https://images.pexels.com/photos/7168579/pexels-photo-7168579.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "unlock_tier": "Pro-Owner", "unlock_threshold": 10000},
+    {"id": "ben_advisory_council", "title": "Advisory Council Access", "description": "Help shape the OneX roadmap as part of our advisory council.", "image": "https://images.unsplash.com/photo-1462007895615-c8c073bebcd8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxkdWJhaSUyMHNreWxpbmUlMjBuaWdodHxlbnwwfHx8fDE3ODEzMDE4OTV8MA&ixlib=rb-4.1.0&q=85", "unlock_tier": "Pro-Owner", "unlock_threshold": 10000},
 ]
 
 FAQS_SEED = [
@@ -265,14 +308,87 @@ async def seed_data():
         await db.categories.insert_many([dict(c) for c in CATEGORY_SEED])
     if await db.webinars.count_documents({}) == 0:
         await db.webinars.insert_many([dict(w) for w in WEBINAR_SEED])
+    # Backfill luma_url on previously-seeded webinars (one-shot migration).
+    await db.webinars.update_many(
+        {"luma_url": {"$exists": False}},
+        {"$set": {"luma_url": "https://luma.com/dveb7fpt"}},
+    )
     if await db.community_updates.count_documents({}) == 0:
         await db.community_updates.insert_many([dict(u) for u in UPDATES_SEED])
     if await db.leaderboard_seed.count_documents({}) == 0:
         await db.leaderboard_seed.insert_many([dict(lb) for lb in LEADERBOARD_SEED])
     if await db.co_owner_benefits.count_documents({}) == 0:
         await db.co_owner_benefits.insert_many([dict(b) for b in CO_OWNER_BENEFITS_SEED])
+    # One-shot tier rename migration: Cadet/Partner/Inner Circle/Founder → Member/Insider/Co-Owner/Pro-Owner.
+    # Idempotent: matches only legacy names; safe to re-run on every boot.
+    _TIER_RENAME = {
+        "Cadet": "Member",
+        "Partner": "Insider",
+        "Inner Circle": "Co-Owner",
+        "Founder": "Pro-Owner",
+        # Legacy "Insider" (old Level 1 @ 500 AED) now overlaps with new "Member" range — recompute below.
+    }
+    for old, new in _TIER_RENAME.items():
+        await db.users.update_many({"tier": old}, {"$set": {"tier": new}})
+        await db.leaderboard_seed.update_many({"tier": old}, {"$set": {"tier": new}})
+        await db.co_owner_benefits.update_many({"unlock_tier": old}, {"$set": {"unlock_tier": new}})
+    # Recompute every user's tier from balance to fix the legacy-Insider overlap.
+    async for u in db.users.find({}, {"_id": 0, "user_id": 1, "aed_balance": 1, "tier": 1}):
+        new_tier = compute_tier(u.get("aed_balance", 0))
+        if new_tier != u.get("tier"):
+            await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"tier": new_tier}})
+    # Same balance-derived recompute for the seeded leaderboard rows.
+    async for s in db.leaderboard_seed.find({}, {"_id": 0, "name": 1, "balance": 1, "tier": 1}):
+        new_tier = compute_tier(s.get("balance", 0))
+        if new_tier != s.get("tier"):
+            await db.leaderboard_seed.update_one({"name": s["name"]}, {"$set": {"tier": new_tier}})
+    # And re-derive unlock_tier on benefit catalogue rows from unlock_threshold.
+    async for b in db.co_owner_benefits.find({}, {"_id": 0, "id": 1, "unlock_threshold": 1, "unlock_tier": 1}):
+        # The benefit "unlocks at" the named tier whose threshold == its unlock_threshold.
+        target = next((t["name"] for t in TIERS if t["threshold"] == b.get("unlock_threshold")), None)
+        if target and target != b.get("unlock_tier"):
+            await db.co_owner_benefits.update_one({"id": b["id"]}, {"$set": {"unlock_tier": target}})
     if await db.faqs.count_documents({}) == 0:
         await db.faqs.insert_many([dict(f) for f in FAQS_SEED])
+    # One-shot migration: upgrade legacy 5-step milestone docs to the new 12-step journey.
+    # We detect "legacy" by the absence of any new-only milestone IDs.
+    NEW_IDS = {"browse_properties", "share_referral", "save_property", "invite_friend", "friend_kyc", "join_community", "allocation_ready"}
+    legacy_docs = await db.user_milestones.find({"milestones.id": {"$nin": list(NEW_IDS)}}, {"_id": 0, "user_id": 1, "milestones": 1}).to_list(2000)
+    for doc in legacy_docs:
+        prev = {m["id"]: m for m in doc.get("milestones", [])}
+        # Preserve any milestone that was already completed in the legacy doc.
+        rebuilt = []
+        seed = [
+            ("join_waitlist", "Join Waitlist",            "You're officially in. Let's get you allocation-ready.",       "user-plus",    "auto"),
+            ("verify_mobile", "Verify Mobile",            "Add a number so we can reach you for time-sensitive slots.", "smartphone",   "manual"),
+            ("browse_properties", "Browse Dubai Properties", "Open any property to see the OneX selection framework.",  "building",     "auto"),
+            ("share_referral", "Share Your Referral Link", "Send your unique link to one friend (any channel).",         "share",        "auto"),
+            ("attend_webinar", "Attend a Webinar",        "Reduce investment anxiety with a 30-min expert session.",    "calendar",     "manual"),
+            ("save_property", "Save a Property",          "Bookmark a launch so we notify you on allocation day.",      "bookmark",     "auto"),
+            ("invite_friend", "Invite a Friend (signup)", "Your friend signs up through your link.",                    "user-check",   "auto"),
+            ("complete_kyc", "Complete KYC",              "Verify identity to become investment-ready.",                "id-card",      "manual"),
+            ("reserve_allocation", "Reserve Allocation Interest", "Tell us which kind of asset you'd commit to first.","pie-chart",    "manual"),
+            ("friend_kyc", "Friend Completes KYC",        "Your invitee verifies their identity too.",                  "shield-check", "auto"),
+            ("join_community", "Join Community Updates", "Like or save your first community post.",                    "message-square","auto"),
+            ("allocation_ready", "Allocation-Ready Co-Owner", "All systems go — you're at the top of the queue.",      "trophy",       "auto"),
+        ]
+        for mid, title, subtitle, icon, kind in seed:
+            was = prev.get(mid)
+            if was and was.get("status") == "completed":
+                rebuilt.append({**was, "title": title, "subtitle": subtitle, "icon": icon, "kind": kind})
+            else:
+                rebuilt.append({"id": mid, "title": title, "subtitle": subtitle, "status": "upcoming", "icon": icon, "kind": kind})
+        # Cascade: first non-completed step becomes pending.
+        seen_pending = False
+        for m in rebuilt:
+            if m["status"] == "completed":
+                continue
+            if not seen_pending:
+                m["status"] = "pending"
+                seen_pending = True
+            else:
+                m["status"] = "upcoming"
+        await db.user_milestones.update_one({"user_id": doc["user_id"]}, {"$set": {"milestones": rebuilt}})
     log.info("seed: complete")
 
 
@@ -315,14 +431,86 @@ def _make_referral_code(name: str) -> str:
 async def ensure_user_milestones(user_id: str):
     if await db.user_milestones.find_one({"user_id": user_id}):
         return
+    # 12-step gamified journey. Mix profile · property · referral · learn · commitment.
+    # `status` cascade is recomputed dynamically — only the first incomplete step is "pending".
     milestones = [
-        {"id": "join_waitlist", "title": "Join Waitlist", "subtitle": "You have successfully joined the waitlist.", "status": "completed", "icon": "user-plus", "completed_at": _now()},
-        {"id": "verify_mobile", "title": "Verify Mobile", "subtitle": "Complete mobile verification to unlock next steps.", "status": "pending", "icon": "smartphone"},
-        {"id": "complete_kyc", "title": "Complete KYC", "subtitle": "Verify your identity to become investment ready.", "status": "pending", "icon": "id-card"},
-        {"id": "attend_webinar", "title": "Attend Webinar", "subtitle": "Attend an upcoming webinar to learn more.", "status": "pending", "icon": "calendar"},
-        {"id": "reserve_allocation", "title": "Reserve Allocation Interest", "subtitle": "Reserve your allocation preference.", "status": "upcoming", "icon": "pie-chart"},
+        {"id": "join_waitlist",       "title": "Join Waitlist",            "subtitle": "You're officially in. Let's get you allocation-ready.",       "status": "completed", "icon": "user-plus",   "kind": "auto",   "completed_at": _now()},
+        {"id": "verify_mobile",       "title": "Verify Mobile",            "subtitle": "Add a number so we can reach you for time-sensitive slots.", "status": "pending",   "icon": "smartphone",  "kind": "manual"},
+        {"id": "browse_properties",   "title": "Browse Dubai Properties",  "subtitle": "Open any property to see the OneX selection framework.",     "status": "upcoming",  "icon": "building",    "kind": "auto"},
+        {"id": "share_referral",      "title": "Share Your Referral Link", "subtitle": "Send your unique link to one friend (any channel).",         "status": "upcoming",  "icon": "share",       "kind": "auto"},
+        {"id": "attend_webinar",      "title": "Attend a Webinar",         "subtitle": "Reduce investment anxiety with a 30-min expert session.",    "status": "upcoming",  "icon": "calendar",    "kind": "manual"},
+        {"id": "save_property",       "title": "Save a Property",          "subtitle": "Bookmark a launch so we notify you on allocation day.",      "status": "upcoming",  "icon": "bookmark",    "kind": "auto"},
+        {"id": "invite_friend",       "title": "Invite a Friend (signup)", "subtitle": "Your friend signs up through your link.",                    "status": "upcoming",  "icon": "user-check",  "kind": "auto"},
+        {"id": "complete_kyc",        "title": "Complete KYC",             "subtitle": "Verify identity to become investment-ready.",                "status": "upcoming",  "icon": "id-card",     "kind": "manual"},
+        {"id": "reserve_allocation",  "title": "Reserve Allocation Interest","subtitle": "Tell us which kind of asset you'd commit to first.",       "status": "upcoming",  "icon": "pie-chart",   "kind": "manual"},
+        {"id": "friend_kyc",          "title": "Friend Completes KYC",     "subtitle": "Your invitee verifies their identity too.",                  "status": "upcoming",  "icon": "shield-check","kind": "auto"},
+        {"id": "join_community",      "title": "Join Community Updates",   "subtitle": "Like or save your first community post.",                    "status": "upcoming",  "icon": "message-square","kind": "auto"},
+        {"id": "allocation_ready",    "title": "Allocation-Ready Co-Owner","subtitle": "All systems go — you're at the top of the queue.",          "status": "upcoming",  "icon": "trophy",      "kind": "auto"},
     ]
     await db.user_milestones.insert_one({"user_id": user_id, "milestones": milestones})
+
+
+async def auto_complete_data_milestones(user_id: str) -> bool:
+    """Mark data-driven milestones complete based on real activity. Returns True if
+    anything changed (so we re-cascade the queue afterwards)."""
+    doc = await db.user_milestones.find_one({"user_id": user_id})
+    if not doc:
+        return False
+    milestones = doc["milestones"]
+    changed = False
+
+    async def _have(coll: str, q: dict) -> bool:
+        return (await db[coll].count_documents(q)) > 0
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "phone": 1})
+    user_phone = (user or {}).get("phone")
+
+    referees = await db.referrals.find({"referrer_id": user_id}, {"_id": 0, "verified": 1, "kyc_completed": 1}).to_list(100)
+
+    checks = {
+        # verify_mobile auto-completes the moment a phone number is on file (mirrors the existing manual flow).
+        "verify_mobile":     bool(user_phone),
+        "browse_properties": await _have("property_views", {"user_id": user_id}),
+        "share_referral":    await _have("referral_shares", {"user_id": user_id}),
+        "save_property":     await _have("saved_properties", {"user_id": user_id}),
+        "invite_friend":     any(r.get("verified") for r in referees),
+        "friend_kyc":        any(r.get("kyc_completed") for r in referees),
+        "join_community":    (await _have("user_likes", {"user_id": user_id})) or (await _have("user_saves", {"user_id": user_id})),
+        # attend_webinar — auto if the user actually attended (not just registered).
+        "attend_webinar":    await _have("webinar_registrations", {"user_id": user_id, "attended": True}),
+    }
+
+    for m in milestones:
+        if m["status"] != "completed" and checks.get(m["id"]) is True:
+            m["status"] = "completed"
+            m["completed_at"] = _now()
+            changed = True
+            granted = MILESTONE_REWARDS.get(m["id"], 0)
+            if granted:
+                await grant_aed(user_id, granted)
+                await add_activity(user_id, "milestone", f"Completed: {m['title']}", granted)
+
+    # Final allocation_ready unlocks once every prior milestone is done.
+    prior = [m for m in milestones if m["id"] != "allocation_ready"]
+    final = next((m for m in milestones if m["id"] == "allocation_ready"), None)
+    if final and final["status"] != "completed" and all(p["status"] == "completed" for p in prior):
+        final["status"] = "completed"
+        final["completed_at"] = _now()
+        changed = True
+
+    # Cascade: ensure exactly one pending step (the first incomplete one).
+    if changed:
+        seen_pending = False
+        for m in milestones:
+            if m["status"] == "completed":
+                continue
+            if not seen_pending:
+                m["status"] = "pending"
+                seen_pending = True
+            else:
+                m["status"] = "upcoming"
+        await db.user_milestones.update_one({"user_id": user_id}, {"$set": {"milestones": milestones}})
+    return changed
 
 
 @api.post("/auth/session")
@@ -346,7 +534,7 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
             "email": email,
             "name": name,
             "picture": picture,
-            "tier": "Cadet",
+            "tier": "Member",
             "aed_balance": 100,
             "referral_code": _make_referral_code(name),
             "referred_by": None,
@@ -355,6 +543,7 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
         await db.users.insert_one(user_doc)
         await ensure_user_milestones(user_id)
         await add_activity(user_id, "join", "Joined the OneX waitlist", reward=100)
+        user_doc.pop("_id", None)
         user = user_doc
     else:
         if picture and not user.get("picture"):
@@ -371,8 +560,49 @@ async def auth_session(payload: SessionExchange, request: Request, response: Res
     })
 
     if is_new_user:
-        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        # Referral attribution — if a `?ref=<code>` made it to the session exchange,
+        # find the referrer, link the new user, and reward them instantly.
+        ref_code = (payload.ref or "").strip().lower() or None
+        if ref_code:
+            referrer = await db.users.find_one({"referral_code": ref_code})
+            if referrer and referrer["user_id"] != user["user_id"]:
+                await db.users.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {"referred_by": referrer["user_id"]}},
+                )
+                user["referred_by"] = referrer["user_id"]
+                await db.referrals.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "referrer_id": referrer["user_id"],
+                    "referee_id": user["user_id"],
+                    "referee_email": user["email"],
+                    "verified": True,  # Google sign-in = email verified
+                    "kyc_completed": False,
+                    "created_at": _now(),
+                })
+                await grant_aed(referrer["user_id"], 50)
+                await add_activity(referrer["user_id"], "referral", f"Referred {user['name']}", 50)
+                await _mark_click_converted(ref_code, request)
+                # Best-effort email to the referrer.
+                origin_url = _app_url(request)
+                background.add_task(
+                    send_milestone_done,
+                    referrer["email"],
+                    referrer["name"],
+                    f"Friend joined · {user['name']}",
+                    50,
+                    referrer["aed_balance"] + 50,
+                    origin_url,
+                )
+        origin = _app_url(request)
         background.add_task(send_welcome, user["email"], user["name"], origin)
+        # CRM: sync new Google signup into Brevo list.
+        background.add_task(
+            brevo_upsert_contact,
+            email=user["email"], name=user["name"], ref_code=user["referral_code"],
+            tier=user.get("tier", "Member"), aed_balance=user.get("aed_balance", 0),
+            source="google",
+        )
 
     response.set_cookie(
         key="session_token",
@@ -399,9 +629,164 @@ async def auth_logout(response: Response, session_token: Optional[str] = Cookie(
     return {"ok": True}
 
 
+# -------------------- Email magic-link sign-in --------------------
+def _gen_otp(n: int = 6) -> str:
+    return "".join(random.choices(string.digits, k=n))
+
+
+async def _mark_click_converted(code: str, request: Request) -> None:
+    """When attribution happens, flip the matching click rows to converted=True so the
+    pending/expired buckets stay accurate on the referrer dashboard."""
+    code = (code or "").strip().lower()
+    if not code:
+        return
+    visitor = request.cookies.get("onex_visitor") if request else None
+    query = {"code": code, "converted": False}
+    if visitor:
+        query["visitor_id"] = visitor
+        await db.referral_clicks.update_many(query, {"$set": {"converted": True, "converted_at": _now()}})
+        return
+    # No cookie — fall back to the most recent unconverted click for that code.
+    last = await db.referral_clicks.find_one(query, sort=[("created_at", -1)])
+    if last:
+        await db.referral_clicks.update_one({"id": last["id"]}, {"$set": {"converted": True, "converted_at": _now()}})
+
+
+async def _attribute_referral_signup(user: dict, ref_code: Optional[str], origin: str, background: BackgroundTasks, request: Optional[Request] = None):
+    code = (ref_code or "").strip().lower() or None
+    if not code:
+        return
+    referrer = await db.users.find_one({"referral_code": code})
+    if not referrer or referrer["user_id"] == user["user_id"]:
+        return
+    if await db.referrals.find_one({"referee_id": user["user_id"]}):
+        return
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"referred_by": referrer["user_id"]}})
+    await db.referrals.insert_one({
+        "id": str(uuid.uuid4()),
+        "referrer_id": referrer["user_id"],
+        "referee_id": user["user_id"],
+        "referee_email": user["email"],
+        "verified": True,
+        "kyc_completed": False,
+        "created_at": _now(),
+    })
+    await grant_aed(referrer["user_id"], 50)
+    await add_activity(referrer["user_id"], "referral", f"Referred {user['name']}", 50)
+    if request is not None:
+        await _mark_click_converted(code, request)
+    background.add_task(
+        send_milestone_done, referrer["email"], referrer["name"],
+        f"Friend joined · {user['name']}", 50, referrer["aed_balance"] + 50, origin,
+    )
+
+
+@api.post("/auth/email/start")
+async def auth_email_start(payload: EmailStart, request: Request, background: BackgroundTasks):
+    email = payload.email.strip().lower()
+    if "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Enter a valid email")
+    code = _gen_otp()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    await db.email_otps.update_one(
+        {"email": email},
+        {"$set": {
+            "email": email, "code": code, "ref": (payload.ref or "").strip().lower() or None,
+            "expires_at": expires_at, "created_at": _now(), "attempts": 0,
+        }},
+        upsert=True,
+    )
+    origin = _app_url(request)
+    # Best-effort send through the existing helper signature: reuse send_milestone_done's chassis.
+    from email_service import _send, _shell  # type: ignore  # internal re-use
+    body = f"""
+    <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#0A0A0B;border:1px solid #27272A;border-radius:16px;'>
+      <tr><td style='padding:24px;text-align:center;'>
+        <div style='color:#8CFF2E;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;'>Your sign-in code</div>
+        <div style='color:#FFFFFF;font-size:40px;font-weight:600;padding:12px 0;letter-spacing:0.3em;font-family:monospace;'>{code}</div>
+        <div style='color:#A1A1AA;font-size:13px;'>Expires in 15 minutes.</div>
+      </td></tr>
+    </table>
+    """
+    html = _shell(
+        title="Sign in to OneX Club",
+        intro="Enter this code in the OneX Club sign-in screen. If you didn't request this, ignore the email.",
+        body_html=body,
+        cta_label="Open OneX Club",
+        cta_url=origin,
+    )
+    background.add_task(_send, email, "Your OneX Club sign-in code", html)
+    return {"ok": True}
+
+
+@api.post("/auth/email/verify")
+async def auth_email_verify(payload: EmailVerify, request: Request, response: Response, background: BackgroundTasks):
+    email = payload.email.strip().lower()
+    rec = await db.email_otps.find_one({"email": email})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Request a new code")
+    expires_at = rec["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Code expired — request a new one")
+    if rec.get("attempts", 0) >= 5:
+        raise HTTPException(status_code=429, detail="Too many attempts — request a new code")
+    if payload.code.strip() != rec["code"]:
+        await db.email_otps.update_one({"email": email}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=400, detail="Invalid code")
+
+    await db.email_otps.delete_one({"email": email})
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    is_new_user = user is None
+    if is_new_user:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        name = email.split("@")[0].replace(".", " ").title()
+        user_doc = {
+            "user_id": user_id, "email": email, "name": name, "picture": None,
+            "tier": "Member", "aed_balance": 100, "referral_code": _make_referral_code(name),
+            "referred_by": None, "created_at": _now(),
+        }
+        await db.users.insert_one(user_doc)
+        await ensure_user_milestones(user_id)
+        await add_activity(user_id, "join", "Joined the OneX waitlist", reward=100)
+        user_doc.pop("_id", None)
+        user = user_doc
+
+    origin = _app_url(request)
+    if is_new_user:
+        await _attribute_referral_signup(user, rec.get("ref"), origin, background, request)
+        background.add_task(send_welcome, user["email"], user["name"], origin)
+        # CRM: sync new email-OTP signup into Brevo list.
+        background.add_task(
+            brevo_upsert_contact,
+            email=user["email"], name=user["name"], ref_code=user["referral_code"],
+            tier=user.get("tier", "Member"), aed_balance=user.get("aed_balance", 0),
+            source="email",
+        )
+
+    session_token = f"email_{uuid.uuid4().hex}"
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.user_sessions.insert_one({
+        "user_id": user["user_id"], "session_token": session_token,
+        "expires_at": expires_at, "created_at": datetime.now(timezone.utc),
+    })
+    response.set_cookie(
+        key="session_token", value=session_token,
+        max_age=7 * 24 * 60 * 60, httponly=True, secure=True, samesite="none", path="/",
+    )
+    return {"user": user}
+
+
 # -------------------- Dashboard / progress --------------------
 @api.get("/dashboard")
 async def dashboard(user: CurrentUser):
+    # Recompute data-driven milestones first so the dashboard reflects reality.
+    await auto_complete_data_milestones(user["user_id"])
+    user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})  # refresh balance/tier
     ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]}, {"_id": 0})
     milestones = ms_doc["milestones"] if ms_doc else []
     completed = [m for m in milestones if m["status"] == "completed"]
@@ -461,6 +846,8 @@ async def dashboard(user: CurrentUser):
 
 @api.get("/progress")
 async def progress(user: CurrentUser):
+    await auto_complete_data_milestones(user["user_id"])
+    user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]}, {"_id": 0})
     milestones = ms_doc["milestones"] if ms_doc else []
     completed = [m for m in milestones if m["status"] == "completed"]
@@ -485,6 +872,7 @@ async def progress(user: CurrentUser):
 
 class MilestoneAction(BaseModel):
     milestone_id: str
+    phone: Optional[str] = None
 
 
 @api.post("/progress/complete")
@@ -492,6 +880,14 @@ async def complete_milestone(payload: MilestoneAction, request: Request, backgro
     ms_doc = await db.user_milestones.find_one({"user_id": user["user_id"]})
     if not ms_doc:
         raise HTTPException(status_code=404, detail="Milestones not found")
+
+    # verify_mobile requires a phone number — persist it on the user.
+    if payload.milestone_id == "verify_mobile":
+        phone = (payload.phone or "").strip()
+        if not phone:
+            raise HTTPException(status_code=400, detail="Phone number is required")
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"phone": phone}})
+        user["phone"] = phone
 
     milestones = ms_doc["milestones"]
     granted = 0
@@ -525,7 +921,7 @@ async def complete_milestone(payload: MilestoneAction, request: Request, backgro
             granted,
         )
         fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
-        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        origin = _app_url(request)
         background.add_task(
             send_milestone_done,
             user["email"],
@@ -553,18 +949,32 @@ async def complete_milestone(payload: MilestoneAction, request: Request, backgro
 
 # -------------------- Milestone rewards --------------------
 MILESTONE_REWARDS = {
-    "verify_mobile": 25,
-    "complete_kyc": 50,
-    "attend_webinar": 25,
+    "verify_mobile":      25,
+    "browse_properties":  10,
+    "share_referral":     20,
+    "attend_webinar":     25,
+    "save_property":      15,
+    "invite_friend":      50,
+    "complete_kyc":       50,
     "reserve_allocation": 50,
+    "friend_kyc":        100,
+    "join_community":     10,
+    "allocation_ready":    0,
 }
 
 MILESTONE_TITLE = {
-    "join_waitlist": "Join Waitlist",
-    "verify_mobile": "Verify Mobile",
-    "complete_kyc": "Complete KYC",
-    "attend_webinar": "Attend Webinar",
-    "reserve_allocation": "Reserve Allocation",
+    "join_waitlist":      "Join Waitlist",
+    "verify_mobile":      "Verify Mobile",
+    "browse_properties":  "Browse Dubai Properties",
+    "share_referral":     "Share Your Referral Link",
+    "attend_webinar":     "Attend a Webinar",
+    "save_property":      "Save a Property",
+    "invite_friend":      "Invite a Friend",
+    "complete_kyc":       "Complete KYC",
+    "reserve_allocation": "Reserve Allocation Interest",
+    "friend_kyc":         "Friend Completes KYC",
+    "join_community":     "Join Community Updates",
+    "allocation_ready":   "Allocation-Ready Co-Owner",
 }
 
 
@@ -599,7 +1009,7 @@ def _compute_next_reward(milestones: list, balance: int) -> dict:
         }
     nt = next_tier_info(balance)
     if nt["remaining"] <= 0:
-        return {"kind": "maxed", "amount": 0, "label": "Elite Co-Owner", "tier_name": "Elite Co-Owner"}
+        return {"kind": "maxed", "amount": 0, "label": "Pro-Owner", "tier_name": "Pro-Owner"}
     return {
         "kind": "tier",
         "amount": nt["remaining"],
@@ -622,10 +1032,10 @@ async def benefits_ladder(user: CurrentUser):
         "current_tier": current_tier,
         "next_tier": next_tier,
         "tiers": [
-            {"level": 1, "name": "Co-Owner Member", "threshold": 500, "benefits": ["Priority allocation access", "Exclusive webinars", "AED balance perks"]},
-            {"level": 2, "name": "Priority Co-Owner", "threshold": 2500, "benefits": ["24-hour priority access to new allocations", "Exclusive webinars with executive team", "Better entry pricing on selected properties", "Priority room selection & allocation"]},
-            {"level": 3, "name": "Co-Owner Circle", "threshold": 5000, "benefits": ["Airport transfers", "Complimentary annual stays", "Private founder briefings"]},
-            {"level": 4, "name": "Elite Co-Owner", "threshold": 10000, "benefits": ["Dedicated relationship manager", "Advisory council access", "Invite-only events"]},
+            {"level": 1, "name": "Member",    "threshold": 500,   "benefits": ["Priority allocation access", "Exclusive webinars", "AED balance perks"]},
+            {"level": 2, "name": "Insider",   "threshold": 2500,  "benefits": ["24-hour priority access to new allocations", "Exclusive webinars with executive team", "Better entry pricing on selected properties", "Priority room selection & allocation"]},
+            {"level": 3, "name": "Co-Owner",  "threshold": 5000,  "benefits": ["Airport transfers", "Complimentary annual stays", "Private founder briefings"]},
+            {"level": 4, "name": "Pro-Owner", "threshold": 10000, "benefits": ["Dedicated relationship manager", "Advisory council access", "Invite-only events"]},
         ],
         "ways_to_earn": [
             {"id": "attend_webinar", "title": "Attend Webinar", "aed": 25, "icon": "calendar"},
@@ -691,6 +1101,17 @@ async def save_property(payload: PropertyAction, user: CurrentUser):
     return {"ok": True, "saved": True}
 
 
+@api.post("/properties/view")
+async def log_property_view(payload: PropertyAction, user: CurrentUser):
+    """Record that a user opened a property detail (drives the 'Browse Dubai Properties' milestone)."""
+    await db.property_views.update_one(
+        {"user_id": user["user_id"], "property_id": payload.property_id},
+        {"$set": {"last_viewed_at": _now()}, "$inc": {"count": 1}, "$setOnInsert": {"created_at": _now()}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
 # -------------------- Allocation interests --------------------
 @api.get("/allocation-interests")
 async def get_allocation_interests(user: CurrentUser):
@@ -737,7 +1158,16 @@ async def list_webinars(user: CurrentUser, tab: Optional[str] = "upcoming"):
         webinars = await db.webinars.find({"status": "upcoming"}, {"_id": 0}).sort("date", 1).to_list(50)
     for w in webinars:
         w["registered"] = w["id"] in reg_ids
+        w["luma_url"] = w.get("luma_url") or "https://luma.com/dveb7fpt"
+        w["is_live"] = _webinar_is_live(w)
+        # Backward compat: legacy clients still read `join_url` — now it points to Luma.
+        w["join_url"] = w["luma_url"]
     featured = await db.webinars.find_one({"featured": True}, {"_id": 0})
+    if featured:
+        featured["luma_url"] = featured.get("luma_url") or "https://luma.com/dveb7fpt"
+        featured["is_live"] = _webinar_is_live(featured)
+        featured["join_url"] = featured["luma_url"]
+        featured["registered"] = featured["id"] in reg_ids
     return {
         "webinars": webinars,
         "featured": featured,
@@ -750,51 +1180,431 @@ async def list_webinars(user: CurrentUser, tab: Optional[str] = "upcoming"):
 
 class WebinarAction(BaseModel):
     webinar_id: str
+    ref: Optional[str] = None
 
 
 @api.post("/webinars/register")
-async def register_webinar(payload: WebinarAction, user: CurrentUser):
+async def register_webinar(payload: WebinarAction, request: Request, background: BackgroundTasks, user: CurrentUser):
     existing = await db.webinar_registrations.find_one({"user_id": user["user_id"], "webinar_id": payload.webinar_id})
+    wb = await db.webinars.find_one({"id": payload.webinar_id}, {"_id": 0})
+    if not wb:
+        raise HTTPException(status_code=404, detail="Webinar not found")
+
+    luma_url = wb.get("luma_url") or "https://luma.com/dveb7fpt"
     if existing:
-        return {"ok": True, "already": True}
+        return {"ok": True, "already": True, "join_url": luma_url, "luma_url": luma_url}
+
     await db.webinar_registrations.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
         "webinar_id": payload.webinar_id,
         "attended": False,
+        "join_url": luma_url,
         "created_at": _now(),
     })
+    await db.webinars.update_one({"id": payload.webinar_id}, {"$inc": {"attendees": 1}})
+    await add_activity(user["user_id"], "webinar", f"Registered for {wb['title']}", 0)
+
+    # Webinar-invite referral: if `ref` is set and this user wasn't already attributed, credit referrer +AED 50.
+    origin = _app_url(request)
+    ref_code = (payload.ref or "").strip().lower() or None
+    if ref_code and not user.get("referred_by"):
+        referrer = await db.users.find_one({"referral_code": ref_code})
+        if referrer and referrer["user_id"] != user["user_id"]:
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"referred_by": referrer["user_id"]}})
+            await db.referrals.insert_one({
+                "id": str(uuid.uuid4()),
+                "referrer_id": referrer["user_id"],
+                "referee_id": user["user_id"],
+                "referee_email": user["email"],
+                "verified": True,
+                "kyc_completed": False,
+                "via": "webinar",
+                "created_at": _now(),
+            })
+            await grant_aed(referrer["user_id"], 50)
+            await add_activity(referrer["user_id"], "referral", f"Webinar invite · {user['name']}", 50)
+            await _mark_click_converted(ref_code, request)
+            background.add_task(
+                send_milestone_done, referrer["email"], referrer["name"],
+                f"Friend joined a webinar · {user['name']}", 50, referrer["aed_balance"] + 50, origin,
+            )
+
+    background.add_task(
+        send_milestone_done, user["email"], user["name"],
+        f"Registered · {wb['title']}", 0, user["aed_balance"], f"{origin}/webinars",
+    )
+    return {"ok": True, "join_url": luma_url, "luma_url": luma_url}
+
+
+@api.post("/webinars/remind")
+async def remind_webinar(payload: WebinarAction, request: Request, background: BackgroundTasks, user: CurrentUser):
     wb = await db.webinars.find_one({"id": payload.webinar_id}, {"_id": 0})
-    if wb:
-        await db.webinars.update_one({"id": payload.webinar_id}, {"$inc": {"attendees": 1}})
-        await add_activity(user["user_id"], "webinar", f"Registered for {wb['title']}", 0)
-    return {"ok": True}
+    if not wb:
+        raise HTTPException(status_code=404, detail="Webinar not found")
+    reg = await db.webinar_registrations.find_one({"user_id": user["user_id"], "webinar_id": payload.webinar_id})
+    if not reg:
+        raise HTTPException(status_code=400, detail="Register first to set a reminder")
+    luma_url = wb.get("luma_url") or "https://luma.com/dveb7fpt"
+    # Record the reminder so we don't spam the same event repeatedly.
+    await db.webinar_reminders.update_one(
+        {"user_id": user["user_id"], "webinar_id": payload.webinar_id},
+        {"$set": {"updated_at": _now()}, "$setOnInsert": {"created_at": _now()}},
+        upsert=True,
+    )
+    origin = _app_url(request)
+    try:
+        when_str = datetime.fromisoformat(wb["date"].replace("Z", "+00:00")).strftime("%a, %d %b %Y · %H:%M UTC")
+    except Exception:  # noqa: BLE001
+        when_str = wb.get("date", "")
+    background.add_task(send_webinar_reminder, user["email"], user["name"], wb["title"], when_str, luma_url, origin)
+    return {"ok": True, "message": "Reminder set — we'll email you before it starts."}
+
+
+class WaitlistJoin(BaseModel):
+    email: str
+    name: Optional[str] = None
+    ref: Optional[str] = None
+    source: Optional[str] = "framer"
+
+
+@api.post("/waitlist/join")
+async def waitlist_join(request: Request, background: BackgroundTasks):
+    """Public waitlist signup — designed to be embedded on the OneX Framer landing page.
+
+    Accepts the body as either application/json OR text/plain (the latter being the only
+    content-type browsers allow for cross-origin `mode:"no-cors"` fetches AND for
+    `navigator.sendBeacon`, both of which our Framer Code Override uses for resilience).
+
+    Flow:
+      1. Email validated + dedup-checked.
+      2. Attribution: if `ref` is a valid code AND this email has never been attributed
+         before, credit the referrer +25 AED (waitlist tier — less than a full signup).
+      3. Confirmation email to the new signup.
+      4. Admin notification email to SUPPORT_INBOX.
+    """
+    # Parse the body manually so we handle application/json AND text/plain (Framer no-cors / Beacon).
+    try:
+        raw = await request.body()
+        data: dict = json.loads(raw) if raw else {}
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+    try:
+        payload = WaitlistJoin(**data)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid waitlist payload: {e}")
+
+    # Diagnostic logging — surfaces every inbound waitlist hit (origin, source, ref) so we can
+    # spot silent CORS/network drops between Framer and the API without grepping for emails.
+    log.info(
+        "waitlist/join inbound origin=%s referer=%s source=%s ref=%s email=%s",
+        request.headers.get("origin"), request.headers.get("referer"),
+        payload.source, payload.ref, (payload.email or "")[:48],
+    )
+    email = (payload.email or "").strip().lower()
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    name = (payload.name or "").strip() or email.split("@")[0].replace(".", " ").title()
+    ref_code = (payload.ref or "").strip().lower() or None
+
+    # Dedupe — one waitlist row per email.
+    existing = await db.waitlist_signups.find_one({"email": email})
+    if existing:
+        return {"ok": True, "already": True, "message": "You're already on the waitlist — we'll be in touch soon."}
+
+    referrer = None
+    if ref_code:
+        referrer = await db.users.find_one({"referral_code": ref_code}, {"_id": 0})
+
+    waitlist_id = str(uuid.uuid4())
+    doc = {
+        "id": waitlist_id,
+        "email": email,
+        "name": name,
+        "ref_code": ref_code if referrer else None,
+        "referrer_id": referrer["user_id"] if referrer else None,
+        "source": payload.source or "framer",
+        "created_at": _now(),
+        "converted_user_id": None,
+    }
+    await db.waitlist_signups.insert_one(doc)
+
+    # Credit the referrer for a waitlist signup (smaller reward than a full signup).
+    if referrer:
+        await db.referrals.insert_one({
+            "id": str(uuid.uuid4()),
+            "referrer_id": referrer["user_id"],
+            "referee_id": None,            # not a full user yet — just an email
+            "referee_email": email,
+            "verified": False,
+            "kyc_completed": False,
+            "via": "waitlist",
+            "waitlist_id": waitlist_id,
+            "created_at": _now(),
+        })
+        await grant_aed(referrer["user_id"], 25)
+        await add_activity(referrer["user_id"], "referral", f"Waitlist signup · {name}", 25)
+        await _mark_click_converted(ref_code, request)
+
+    origin = _app_url(request)
+    # CRM: push the waitlist email into the Brevo list (highest-value action — runs first).
+    background.add_task(
+        brevo_upsert_contact,
+        email=email, name=name,
+        ref_code=(referrer["referral_code"] if referrer else None),
+        tier="Waitlist", aed_balance=0,
+        source=(payload.source or "waitlist"),
+    )
+    # Welcome email to the new signup.
+    background.add_task(
+        send_waitlist_welcome,
+        email, name,
+        referrer["name"] if referrer else None,
+        origin,
+        ref_code if referrer else None,
+    )
+    # Admin notification — reuse the support-inbound helper for a consistent format.
+    background.add_task(
+        send_support_inbound,
+        {"email": email, "name": name, "phone": None, "tier": "Waitlist", "aed_balance": 0},
+        f"New waitlist signup via {payload.source or 'framer'}"
+        + (f" — referred by {referrer['name']} ({referrer['email']})" if referrer else " — direct/no referrer"),
+        "waitlist",
+        origin,
+    )
+    if referrer:
+        background.add_task(
+            send_milestone_done,
+            referrer["email"], referrer["name"],
+            f"Friend joined waitlist · {name}", 25, referrer["aed_balance"] + 25, origin,
+        )
+    return {
+        "ok": True,
+        "already": False,
+        "referrer_name": referrer["name"] if referrer else None,
+        "message": f"Welcome to OneX Club, {name}! Check your inbox for next steps.",
+    }
+
+
+@api.get("/waitlist/info")
+async def waitlist_info(ref: Optional[str] = None):
+    """Public endpoint used by the Framer landing to greet the user with the referrer's name."""
+    if not ref:
+        return {"valid": False}
+    referrer = await db.users.find_one({"referral_code": ref.strip().lower()}, {"_id": 0, "name": 1, "picture": 1})
+    if not referrer:
+        return {"valid": False}
+    return {
+        "valid": True,
+        "referrer_name": referrer.get("name", "A OneX member"),
+        "referrer_avatar": referrer.get("picture"),
+    }
+
+
+@api.get("/waitlist/diag")
+async def waitlist_diag():
+    """Public diagnostic ping — lets the user verify from their Framer site console that the
+    Brevo + waitlist pipeline is reachable. Returns counts so a difference between two pings
+    proves a signup just happened."""
+    return {
+        "ok": True,
+        "endpoint": "/api/waitlist/join",
+        "method": "POST",
+        "expects_json": {"email": "string", "ref": "string?", "source": "string?"},
+        "signups_total": await db.waitlist_signups.count_documents({}),
+        "brevo_list_id": int(os.environ.get("BREVO_CONTACT_LIST_ID", "0")) or None,
+        "now": _now(),
+    }
+
+
+@api.get("/activity")
+async def activity_feed(user: CurrentUser, limit: int = 50):
+    """Personal action history — every AED grant, milestone, referral, webinar, top-up.
+    Surfaced on the dashboard so the user always knows what they did + when."""
+    clamped = max(1, min(limit, 100))
+    items = await db.activity_log.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).limit(clamped).to_list(clamped)
+    total_earned = sum(int(a.get("reward", 0) or 0) for a in items if a.get("reward"))
+    return {
+        "items": items,
+        "summary": {"count": len(items), "aed_earned_visible": total_earned},
+    }
 
 
 # -------------------- Referrals --------------------
+REFERRAL_TTL_DAYS = 30  # a click is "active" for 30 days, then "expired" if no signup attribution happened.
+
+
+def _public_app_url() -> str:
+    return os.environ.get("PUBLIC_APP_URL", "https://www.onexassets.com").rstrip("/")
+
+
+def _app_url(request: Optional[Request] = None) -> str:
+    """Resolve the OneX *app* URL for email CTAs (login, dashboard, etc.).
+
+    Always prefer the env-configured ONEX_APP_URL — never trust `request.base_url`,
+    which inside Kubernetes resolves to the internal cluster hostname and yields a
+    403 when shared in emails (which is exactly the bug we fixed here).
+    """
+    env_url = os.environ.get("ONEX_APP_URL", "").rstrip("/")
+    if env_url:
+        return env_url
+    # Last-resort: try the browser-set Origin header, but never the internal cluster host.
+    if request is not None:
+        origin = request.headers.get("origin")
+        if origin and "cluster" not in origin and "emergentcf.cloud" not in origin:
+            return origin.rstrip("/")
+    return _public_app_url()
+
+
+def _email_partial(email: str) -> str:
+    if not email or "@" not in email:
+        return email or ""
+    local, domain = email.split("@", 1)
+    masked = local[0] + "•" * max(1, len(local) - 2) + (local[-1] if len(local) > 1 else "")
+    return f"{masked}@{domain}"
+
+
+class ReferralClick(BaseModel):
+    code: str
+    source: Optional[str] = None  # "landing" | "login" etc.
+
+
+@api.post("/referrals/click")
+async def track_referral_click(payload: ReferralClick, request: Request):
+    """Public endpoint — anyone landing with ?ref= gets logged. No auth required."""
+    code = (payload.code or "").strip().lower()
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing code")
+    referrer = await db.users.find_one({"referral_code": code}, {"_id": 0, "user_id": 1, "name": 1})
+    if not referrer:
+        return {"ok": False, "valid": False}
+    # De-duplicate by (code + visitor cookie) within the same browser session.
+    visitor = request.cookies.get("onex_visitor")
+    if not visitor:
+        visitor = str(uuid.uuid4())
+    await db.referral_clicks.insert_one({
+        "id": str(uuid.uuid4()),
+        "referrer_id": referrer["user_id"],
+        "code": code,
+        "visitor_id": visitor,
+        "user_agent": request.headers.get("user-agent", ""),
+        "ip": request.client.host if request.client else "",
+        "source": payload.source or "landing",
+        "created_at": _now(),
+        "converted": False,
+    })
+    resp = JSONResponse({"ok": True, "valid": True, "referrer_name": referrer.get("name", "A friend")})
+    if not request.cookies.get("onex_visitor"):
+        resp.set_cookie("onex_visitor", visitor, max_age=60 * 60 * 24 * REFERRAL_TTL_DAYS, httponly=False, samesite="lax")
+    return resp
+
+
 @api.get("/referrals")
 async def get_referrals(user: CurrentUser):
-    referrals = await db.referrals.find({"referrer_id": user["user_id"]}, {"_id": 0}).to_list(100)
-    verified = [r for r in referrals if r.get("verified")]
-    kyc_done = [r for r in referrals if r.get("kyc_completed")]
-    backend = os.environ.get("PUBLIC_APP_URL", "")
-    link_base = backend if backend else ""
+    raw = await db.referrals.find({"referrer_id": user["user_id"]}, {"_id": 0}).to_list(200)
+    now = datetime.now(timezone.utc)
+
+    # Build click summary scoped to this referrer.
+    clicks = await db.referral_clicks.find({"referrer_id": user["user_id"]}, {"_id": 0}).to_list(500)
+    unique_visitors = {c["visitor_id"] for c in clicks if c.get("visitor_id")}
+    converted_visitors = {c["visitor_id"] for c in clicks if c.get("converted")}
+
+    referees: list[dict] = []
+    aed_earned = 0
+    for r in raw:
+        referee_id = r.get("referee_id")
+        is_waitlist_only = r.get("via") == "waitlist" and not referee_id
+        # Fetch referee snapshot.
+        referee = await db.users.find_one({"user_id": referee_id}, {"_id": 0, "email": 1, "name": 1, "tier": 1, "aed_balance": 1, "created_at": 1}) if referee_id else None
+        kyc_done = bool(r.get("kyc_completed"))
+        verified = bool(r.get("verified"))
+        webinar_attended = bool(r.get("webinar_attended"))
+        per_friend_aed = 0
+        if is_waitlist_only:
+            per_friend_aed = 25  # waitlist reward
+            status = "waitlist"
+        else:
+            if verified:
+                per_friend_aed += 50
+            if kyc_done:
+                per_friend_aed += 100
+            if webinar_attended:
+                per_friend_aed += 50
+            status = "signed_up"
+            if kyc_done:
+                status = "kyc_completed"
+            elif verified:
+                status = "verified"
+        aed_earned += per_friend_aed
+        # Fallback name/email — waitlist rows store email + we derive a friendly name from it.
+        fallback_email = r.get("referee_email", "")
+        fallback_name = (referee or {}).get("name") or (fallback_email.split("@")[0].replace(".", " ").title() if fallback_email else "Friend")
+        referees.append({
+            "id": r.get("id"),
+            "name": fallback_name,
+            "email": _email_partial((referee or {}).get("email") or fallback_email),
+            "tier": (referee or {}).get("tier") or ("Waitlist" if is_waitlist_only else "Member"),
+            "via": r.get("via", "link"),
+            "joined_at": (referee or {}).get("created_at") or r.get("created_at"),
+            "verified": verified,
+            "kyc_completed": kyc_done,
+            "webinar_attended": webinar_attended,
+            "status": status,
+            "aed_earned": per_friend_aed,
+        })
+
+    # Clicks that never converted, bucketed by expiry.
+    converted_signups = len(referees)
+    ttl_cutoff = now - timedelta(days=REFERRAL_TTL_DAYS)
+    pending_clicks: list[dict] = []
+    expired_clicks: list[dict] = []
+    seen: set = set()
+    for c in clicks:
+        vid = c.get("visitor_id")
+        if not vid or vid in seen or vid in converted_visitors:
+            continue
+        seen.add(vid)
+        try:
+            ts = datetime.fromisoformat(c["created_at"].replace("Z", "+00:00")) if isinstance(c.get("created_at"), str) else c["created_at"]
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except Exception:  # noqa: BLE001
+            ts = now
+        bucket = expired_clicks if ts < ttl_cutoff else pending_clicks
+        bucket.append({
+            "id": c.get("id"),
+            "source": c.get("source", "landing"),
+            "clicked_at": c.get("created_at"),
+            "user_agent_short": (c.get("user_agent", "") or "")[:60],
+            "status": "expired" if bucket is expired_clicks else "pending",
+        })
+
     return {
         "referral_code": user["referral_code"],
-        "referral_link": f"{link_base}/?ref={user['referral_code']}" if link_base else f"https://onex.club/?ref={user['referral_code']}",
+        "referral_link": f"{_public_app_url()}/?ref={user['referral_code']}",
         "stats": {
-            "invites_sent": len(referrals),
-            "verified": len(verified),
-            "kyc_completed": len(kyc_done),
-            "aed_earned": len(verified) * 50 + len(kyc_done) * 100,
+            "invites_sent": converted_signups + len(pending_clicks) + len(expired_clicks),
+            "clicks_total": len(clicks),
+            "clicks_unique": len(unique_visitors),
+            "signups": converted_signups,
+            "waitlist_signups": sum(1 for r in referees if r["status"] == "waitlist"),
+            "verified": sum(1 for r in referees if r["verified"]),
+            "kyc_completed": sum(1 for r in referees if r["kyc_completed"]),
+            "pending": len(pending_clicks),
+            "expired": len(expired_clicks),
+            "aed_earned": aed_earned,
         },
         "missions": [
-            {"id": "invite", "title": "Invite a Friend", "subtitle": "Share your link with one friend.", "aed": 50, "completed": len(referrals) >= 1},
-            {"id": "verify_mobile", "title": "Friend Verifies Mobile", "subtitle": "They confirm their number.", "aed": 25, "completed": len(verified) >= 1},
-            {"id": "complete_kyc", "title": "Friend Completes KYC", "subtitle": "They verify identity.", "aed": 100, "completed": len(kyc_done) >= 1},
-            {"id": "attend_webinar", "title": "Friend Attends Webinar", "subtitle": "They join a OneX webinar.", "aed": 50, "completed": False},
+            {"id": "invite", "title": "Invite a Friend", "subtitle": "Share your link with one friend.", "aed": 50, "completed": converted_signups >= 1},
+            {"id": "verify_mobile", "title": "Friend Verifies Mobile", "subtitle": "They confirm their number.", "aed": 25, "completed": any(r["verified"] for r in referees)},
+            {"id": "complete_kyc", "title": "Friend Completes KYC", "subtitle": "They verify identity.", "aed": 100, "completed": any(r["kyc_completed"] for r in referees)},
+            {"id": "attend_webinar", "title": "Friend Attends Webinar", "subtitle": "They join a OneX webinar.", "aed": 50, "completed": any(r["webinar_attended"] for r in referees)},
         ],
-        "referrals": referrals,
+        "referees": referees,
+        "pending_clicks": pending_clicks[:20],
+        "expired_clicks": expired_clicks[:20],
     }
 
 
@@ -824,8 +1634,8 @@ async def _user_rank(user_id: str) -> dict:
     for s in seed:
         pool.append({"name": s["name"], "avatar": s["avatar"], "balance": s["balance"], "referrals": s["referrals"], "tier": s["tier"], "is_user": False})
     for o in others:
-        pool.append({"name": o["name"], "avatar": o.get("picture"), "balance": o["aed_balance"], "referrals": 0, "tier": o.get("tier", "Cadet"), "is_user": False})
-    pool.append({"name": user["name"], "avatar": user.get("picture"), "balance": user["aed_balance"], "referrals": 0, "tier": user.get("tier", "Cadet"), "is_user": True})
+        pool.append({"name": o["name"], "avatar": o.get("picture"), "balance": o["aed_balance"], "referrals": 0, "tier": o.get("tier", "Member"), "is_user": False})
+    pool.append({"name": user["name"], "avatar": user.get("picture"), "balance": user["aed_balance"], "referrals": 0, "tier": user.get("tier", "Member"), "is_user": True})
     pool.sort(key=lambda x: x["balance"], reverse=True)
     rank = next((i + 1 for i, x in enumerate(pool) if x["is_user"]), len(pool))
     return {"rank": rank, "balance": user["aed_balance"], "total": len(pool)}
@@ -833,26 +1643,58 @@ async def _user_rank(user_id: str) -> dict:
 
 @api.get("/leaderboard")
 async def get_leaderboard(user: CurrentUser, period: str = "weekly"):
-    # Build pool combining seed leaderboard + actual users + current user
+    """Real time-window aggregates from activity_log for actual users; seed users
+    use a stable scaled value (deterministic, no random noise)."""
+    # Determine the cutoff for "weekly" / "monthly". For all_time we sum everything.
+    period = period if period in ("weekly", "monthly", "all_time") else "weekly"
+    now = datetime.now(timezone.utc)
+    cutoff: Optional[datetime] = None
+    if period == "weekly":
+        cutoff = now - timedelta(days=7)
+    elif period == "monthly":
+        cutoff = now - timedelta(days=30)
+
+    # Aggregate activity_log by user_id within the time window.
+    match: dict = {}
+    if cutoff is not None:
+        match["created_at"] = {"$gte": cutoff.isoformat()}
+    pipeline = [
+        {"$match": match} if match else {"$match": {}},
+        {"$group": {"_id": "$user_id", "total": {"$sum": "$reward"}}},
+    ]
+    agg = await db.activity_log.aggregate(pipeline).to_list(500)
+    earned_by_user = {a["_id"]: int(a["total"]) for a in agg}
+
+    # Seed users — deterministic scaling per period (no random multiplier).
     seed = await db.leaderboard_seed.find({}, {"_id": 0}).to_list(100)
-    others = await db.users.find({"user_id": {"$ne": user["user_id"]}}, {"_id": 0}).to_list(100)
+    period_scale = {"weekly": 0.15, "monthly": 0.45, "all_time": 1.0}[period]
     pool = []
     for s in seed:
-        pool.append({"name": s["name"], "avatar": s["avatar"], "balance": s["balance"], "referrals": s["referrals"], "tier": s["tier"], "is_user": False})
+        pool.append({
+            "name": s["name"], "avatar": s["avatar"],
+            "balance": int(s["balance"] * period_scale),
+            "referrals": s["referrals"], "tier": s["tier"], "is_user": False,
+        })
+    # Real users (other than current) — use actual aggregated AED earned in window.
+    others = await db.users.find({"user_id": {"$ne": user["user_id"]}}, {"_id": 0}).to_list(200)
     for o in others:
-        pool.append({"name": o["name"], "avatar": o.get("picture"), "balance": o["aed_balance"], "referrals": 0, "tier": o.get("tier", "Cadet"), "is_user": False})
-    pool.append({"name": user["name"], "avatar": user.get("picture"), "balance": user["aed_balance"], "referrals": 0, "tier": user.get("tier", "Cadet"), "is_user": True})
-    # Period multiplier just to differentiate values (cosmetic)
-    multiplier = {"weekly": 0.18, "monthly": 0.55, "all_time": 1.0}.get(period, 1.0)
-    pool_period = [
-        {**p, "balance": int(p["balance"] * multiplier) if not p["is_user"] else p["balance"]}
-        for p in pool
-    ]
-    pool_period.sort(key=lambda x: x["balance"], reverse=True)
-    for i, p in enumerate(pool_period):
+        bal = earned_by_user.get(o["user_id"], 0) if period != "all_time" else o.get("aed_balance", 0)
+        pool.append({
+            "name": o["name"], "avatar": o.get("picture"),
+            "balance": int(bal), "referrals": 0,
+            "tier": o.get("tier", "Member"), "is_user": False,
+        })
+    me_balance = earned_by_user.get(user["user_id"], 0) if period != "all_time" else user["aed_balance"]
+    pool.append({
+        "name": user["name"], "avatar": user.get("picture"),
+        "balance": int(me_balance), "referrals": 0,
+        "tier": user.get("tier", "Member"), "is_user": True,
+    })
+    pool.sort(key=lambda x: x["balance"], reverse=True)
+    for i, p in enumerate(pool):
         p["rank"] = i + 1
-    me = next(p for p in pool_period if p["is_user"])
-    return {"period": period, "podium": pool_period[:3], "list": pool_period[:30], "me": me}
+    me = next(p for p in pool if p["is_user"])
+    return {"period": period, "podium": pool[:3], "list": pool[:30], "me": me}
 
 
 # -------------------- Community updates --------------------
@@ -916,7 +1758,7 @@ async def get_support(user: CurrentUser):
             "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5ODk2NHww&ixlib=rb-4.1.0&q=85",
             "status": "Online",
         },
-        "tier": user.get("tier", "Cadet"),
+        "tier": user.get("tier", "Member"),
     }
 
 
@@ -926,7 +1768,7 @@ class SupportMessage(BaseModel):
 
 
 @api.post("/support/contact")
-async def support_contact(payload: SupportMessage, user: CurrentUser):
+async def support_contact(payload: SupportMessage, request: Request, background: BackgroundTasks, user: CurrentUser):
     await db.support_messages.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
@@ -934,6 +1776,9 @@ async def support_contact(payload: SupportMessage, user: CurrentUser):
         "message": payload.message,
         "created_at": _now(),
     })
+    # Forward immediately to the concierge inbox (best-effort, non-blocking).
+    origin = _app_url(request)
+    background.add_task(send_support_inbound, dict(user), payload.message, payload.channel, origin)
     return {"ok": True, "message": "Our concierge will reach out within 1 hour."}
 
 
@@ -956,6 +1801,7 @@ async def get_settings(user: CurrentUser):
 class SettingsUpdate(BaseModel):
     settings: dict
     name: Optional[str] = None
+    phone: Optional[str] = None
 
 
 @api.put("/settings")
@@ -965,8 +1811,13 @@ async def update_settings(payload: SettingsUpdate, user: CurrentUser):
         {"$set": {"settings": payload.settings, "updated_at": _now()}},
         upsert=True,
     )
+    user_updates: dict = {}
     if payload.name:
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"name": payload.name}})
+        user_updates["name"] = payload.name
+    if payload.phone is not None:
+        user_updates["phone"] = payload.phone.strip()
+    if user_updates:
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": user_updates})
     return {"ok": True}
 
 
@@ -1019,6 +1870,36 @@ async def create_checkout(payload: CheckoutPayload, request: Request, user: Curr
     if not pkg:
         raise HTTPException(status_code=400, detail="Invalid package")
 
+    dummy_mode = os.environ.get("STRIPE_DUMMY_MODE", "false").lower() in ("true", "1", "yes")
+    origin = payload.origin_url.rstrip("/")
+
+    if dummy_mode:
+        # Short-circuit Stripe entirely — write a synthetic "paid" tx, redirect back to success URL.
+        session_id = f"dummy_{uuid.uuid4().hex}"
+        await db.payment_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["user_id"],
+            "session_id": session_id,
+            "package_id": pkg["id"],
+            "amount_usd": pkg["usd"],
+            "aed_amount": pkg["aed"],
+            "currency": "usd",
+            "status": "complete",
+            "payment_status": "paid",
+            "credited": False,
+            "dummy": True,
+            "metadata": {
+                "user_id": user["user_id"],
+                "package_id": pkg["id"],
+                "aed_amount": str(pkg["aed"]),
+                "source": "aed_topup_dummy",
+            },
+            "created_at": _now(),
+            "updated_at": _now(),
+        })
+        success_url = f"{origin}/benefits-ladder?session_id={session_id}&topup=success&dummy=1"
+        return {"url": success_url, "session_id": session_id, "package": pkg, "dummy": True}
+
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Stripe is not configured")
@@ -1027,7 +1908,6 @@ async def create_checkout(payload: CheckoutPayload, request: Request, user: Curr
     webhook_url = f"{host_url}api/webhook/stripe"
     stripe = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
 
-    origin = payload.origin_url.rstrip("/")
     success_url = f"{origin}/benefits-ladder?session_id={{CHECKOUT_SESSION_ID}}&topup=success"
     cancel_url = f"{origin}/benefits-ladder?topup=cancel"
 
@@ -1095,7 +1975,7 @@ async def _credit_payment(tx: dict, origin: Optional[str] = None) -> dict:
                 aed=aed,
                 usd=float(tx.get("amount_usd", 0)),
                 new_balance=user["aed_balance"],
-                tier=user.get("tier", "Cadet"),
+                tier=user.get("tier", "Member"),
                 app_url=origin or "https://onex.club",
             )
     except Exception as e:  # noqa: BLE001
@@ -1108,6 +1988,22 @@ async def checkout_status(session_id: str, request: Request, user: CurrentUser):
     tx = await db.payment_transactions.find_one({"session_id": session_id})
     if not tx or tx["user_id"] != user["user_id"]:
         raise HTTPException(status_code=404, detail="Transaction not found")
+
+    origin = _app_url(request)
+
+    # Dummy mode short-circuit — synthetic sessions are already marked paid on create.
+    if tx.get("dummy") or session_id.startswith("dummy_"):
+        await _credit_payment(tx, origin=origin)
+        fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+        return {
+            "status": "complete",
+            "payment_status": "paid",
+            "package_id": tx.get("package_id"),
+            "aed_credited": int(tx["aed_amount"]),
+            "aed_balance": fresh_user["aed_balance"],
+            "tier": fresh_user["tier"],
+            "dummy": True,
+        }
 
     api_key = os.environ.get("STRIPE_API_KEY")
     host_url = str(request.base_url)
@@ -1127,7 +2023,6 @@ async def checkout_status(session_id: str, request: Request, user: CurrentUser):
 
     if status.payment_status == "paid":
         tx = await db.payment_transactions.find_one({"_id": tx["_id"]})
-        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
         await _credit_payment(tx, origin=origin)
 
     fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
@@ -1141,6 +2036,92 @@ async def checkout_status(session_id: str, request: Request, user: CurrentUser):
     }
 
 
+# -------------------- KYC (Veriff) --------------------
+VERIFF_BASE_URL = "https://stationapi.veriff.com/v1"
+
+
+def _veriff_signature(payload_bytes: bytes) -> str:
+    secret = (os.environ.get("VERIFF_SECRET") or "").encode("utf-8")
+    return hmac.new(secret, payload_bytes, hashlib.sha256).hexdigest()
+
+
+@api.post("/kyc/start")
+async def kyc_start(request: Request, user: CurrentUser):
+    api_key = os.environ.get("VERIFF_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Veriff not configured")
+    origin = _app_url(request)
+    import json as _json
+    body = {
+        "verification": {
+            "callback": f"{origin}/progress?kyc=complete",
+            "person": {
+                "firstName": user["name"].split(" ")[0],
+                "lastName": user["name"].split(" ")[-1] if " " in user["name"] else "Member",
+            },
+            "vendorData": user["user_id"],
+        }
+    }
+    payload_bytes = _json.dumps(body).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "X-AUTH-CLIENT": api_key,
+        "X-HMAC-SIGNATURE": _veriff_signature(payload_bytes),
+    }
+    async with httpx.AsyncClient(timeout=20) as http:
+        r = await http.post(f"{VERIFF_BASE_URL}/sessions", content=payload_bytes, headers=headers)
+    if r.status_code >= 400:
+        log.warning("veriff session create failed %s: %s", r.status_code, r.text)
+        raise HTTPException(status_code=502, detail="Could not start KYC")
+    verification = (r.json() or {}).get("verification", {})
+    await db.kyc_sessions.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "veriff_session_id": verification.get("id"),
+        "status": "started",
+        "session_url": verification.get("url"),
+        "created_at": _now(),
+    })
+    return {"url": verification.get("url"), "session_id": verification.get("id")}
+
+
+@api.post("/webhook/veriff")
+async def veriff_webhook(request: Request, background: BackgroundTasks):
+    raw = await request.body()
+    signature = request.headers.get("X-HMAC-SIGNATURE", "")
+    if not hmac.compare_digest(signature, _veriff_signature(raw)):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    import json as _json
+    event = _json.loads(raw.decode("utf-8") or "{}")
+    vendor = (event.get("verification") or {}).get("vendorData")
+    status = ((event.get("verification") or {}).get("status") or "").lower()
+    if not vendor:
+        return {"ok": True}
+    await db.kyc_sessions.update_one({"user_id": vendor}, {"$set": {"status": status, "updated_at": _now(), "raw": event}}, upsert=True)
+    if status in ("approved", "verified"):
+        user = await db.users.find_one({"user_id": vendor}, {"_id": 0})
+        ms = await db.user_milestones.find_one({"user_id": vendor})
+        if user and ms:
+            granted = 0
+            for m in ms["milestones"]:
+                if m["id"] == "complete_kyc" and m["status"] != "completed":
+                    m["status"] = "completed"
+                    m["completed_at"] = _now()
+                    granted = MILESTONE_REWARDS.get("complete_kyc", 0)
+            for m in ms["milestones"]:
+                if m["status"] == "upcoming":
+                    m["status"] = "pending"
+                    break
+            await db.user_milestones.update_one({"user_id": vendor}, {"$set": {"milestones": ms["milestones"]}})
+            if granted:
+                await grant_aed(vendor, granted)
+                await add_activity(vendor, "milestone", "Completed: Complete KYC", granted)
+                fresh = await db.users.find_one({"user_id": vendor}, {"_id": 0})
+                background.add_task(send_milestone_done, user["email"], user["name"], "Complete KYC", granted, fresh["aed_balance"], "https://onex.club")
+    return {"ok": True}
+
+
+# -------------------- Stripe webhook --------------------
 @api.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     body = await request.body()
@@ -1162,7 +2143,7 @@ async def stripe_webhook(request: Request):
                 {"$set": {"status": "complete", "payment_status": "paid", "updated_at": _now()}},
             )
             tx = await db.payment_transactions.find_one({"_id": tx["_id"]})
-            origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+            origin = _app_url(request)
             await _credit_payment(tx, origin=origin)
     return {"ok": True}
 
@@ -1173,7 +2154,11 @@ app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    # CRITICAL: cannot pair `allow_origins=["*"]` with `allow_credentials=True` — browsers
+    # spec-mandated to reject (e.g., Framer landing on www.onexassets.com → preview URL was
+    # silently dropping the body). `allow_origin_regex` echoes the actual Origin back so the
+    # combination is valid and Brevo / Framer / mobile-webview signups all work.
+    allow_origin_regex=".*",
     allow_methods=["*"],
     allow_headers=["*"],
 )

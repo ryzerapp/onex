@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 4 QA — Phase A mobile-app conversion (Capacitor 7 + responsive web). 18/18 backend regression tests pass (TestDashboard, TestWebinars, TestReferrals, TestReferralLinkUrl, TestReferralClickPublic, TestReferralSignupAttribution). 52/52 frontend mobile-responsive assertions pass at both 1920x900 (desktop) and 390x844 / 375x812 (mobile). Verified: desktop sidebar↔mobile chrome breakpoint flip, all 12 routes render at desktop, mobile-top-bar + 5-tab bottom-nav + slide-in drawer, drawer open/close via menu-trigger/bottom-more/ESC/backdrop/close-button + body overflow lock + auto-close on route change, bottom-nav active gold (text-[#FACC15]) indicator moves with route, ZERO horizontal overflow at 375px on all 12 pages (scrollWidth===clientWidth=375), bottom-nav clearance >126px at /dashboard end. Capacitor 7 config + native.js + scripts all present. Production build artefacts confirmed (build/index.html + build/static/js/main.e27a6db0.js).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "verified_assertions": [
+    "Desktop 1920x900: [data-testid='brand-block'] (sidebar) present; mobile-top-bar and bottom-nav have computed display:none.",
+    "All 12 routes render on desktop without regression: /dashboard /progress /benefits-ladder /properties /allocation-interests /webinars /invite /leaderboard /community /co-owner-benefits /support /settings.",
+    "Mobile 390x844: brand-block sidebar hidden (lg:flex), [data-testid='mobile-top-bar'] + mobile-brand + mobile-aed-balance + mobile-menu-trigger visible.",
+    "[data-testid='bottom-nav'] visible with all 5 tabs: bottom-nav-dashboard, bottom-nav-properties, bottom-nav-webinars, bottom-nav-invite, bottom-nav-more.",
+    "Bottom-nav active highlight: on /dashboard the dashboard tab gets class containing 'text-[#FACC15]'. After clicking bottom-nav-properties → /properties, properties tab gains gold class and dashboard loses it.",
+    "Drawer opens via mobile-menu-trigger AND via bottom-nav-more; closes via mobile-drawer-close, ESC key, and backdrop tap; auto-closes after clicking any drawer-* nav link (verified with drawer-sidebar-leaderboard-link → navigated to /leaderboard).",
+    "Drawer body-scroll lock: document.body.style.overflow === 'hidden' when open, '' when closed.",
+    "No horizontal overflow at 375px on all 12 pages — scrollWidth===clientWidth===375 (diff=0 on every page).",
+    "Bottom-nav clearance at /dashboard end (390x844): last visible content bottom 717px, vh 844px → gap=126.6px (>84px requirement satisfied; main has pb-24 + mobile-safe-bottom).",
+    "Capacitor 7 wiring verified: /app/frontend/capacitor.config.ts has appId='club.onex.app', appName='OneX Club', webDir='build'; /app/frontend/src/native.js exists and is imported by /app/frontend/src/index.js (initNativeShell()); /app/frontend/package.json has cap:sync, cap:add:ios, cap:add:android, cap:open:ios, cap:open:android (plus cap:run:ios/android).",
+    "Production build artefacts present: /app/frontend/build/index.html and /app/frontend/build/static/js/main.e27a6db0.js. MOBILE_BUILD.md present.",
+    "Backend regression — GET /api/dashboard, /api/referrals, /api/webinars (upcoming + recorded + register idempotent) all 200 with expected shape; 18/18 targeted tests pass."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "MobileDrawer route-change effect intentionally disables exhaustive-deps lint (only listens to location.pathname) — fine, but consider also depending on `open` + early-return when !open to avoid an unused render cycle on every navigation while drawer is closed (currently the effect runs and is a no-op because of `if (open) onClose()`).",
+    "BottomNav 5th 'More' item is a <button> (not NavLink) — by design, so it's never marked active; if the spec ever asks for a persistent 'More' route this needs to be reconsidered.",
+    "MobileDrawer uses `document.body.style.overflow = ''` on cleanup; if any other component sets body overflow simultaneously this would clobber it. Low risk in current code but worth a comment / a small util.",
+    "AppLayout passes onOpenMenu / onOpenMore handlers that both call setDrawerOpen(true); fine. But the drawer state lives in AppLayout — if any deep child ever needs to programmatically open the drawer it would have to be lifted to context. Not blocking.",
+    "Capacitor config has `limitsNavigationsToAppBoundDomains: false` on iOS — required because the app loads /api from REACT_APP_BACKEND_URL (different domain), but worth a comment in capacitor.config.ts so future devs don't tighten it inadvertently.",
+    "navItems.js: bottom-nav 5th slot is implicit in BottomNav.js rather than declared in the array — splitting concerns is fine, but a comment in bottomNavItems noting 'fifth tab is rendered by BottomNav.js itself' would aid discoverability.",
+    "server.py is still ~1781 lines — recommendation from iteration 2/3 stands: split into routers; no functional issue this iteration."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100% (18/18 regression pass)", "frontend": "100% (52/52 mobile-responsive assertions pass)" },
+  "test_credentials": "Bearer/cookie session_token=test_2a912b090cba495aa681e8794bacb6fb (user_qa_1781303183733 / Surya).",
+  "seed_data_creation": "None this iteration. Cookie-only auth, no writes.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase A mobile conversion is fully green. For native re-test: cap:add:ios and cap:add:android cannot run inside this container (no Xcode/Android Studio) — they must be run on a macOS dev box. The web build that gets loaded into the native shell is verified working. When future iterations add native plugins (camera, biometric, etc.), re-run initNativeShell guard checks and re-verify SplashScreen.hide() timing. Stripe is still flagged as DUMMY by main agent — payment flows out of scope for this iteration.",
+  "rca of the issue": "No issues found. Implementation is clean and matches every assertion in the review request."
+}

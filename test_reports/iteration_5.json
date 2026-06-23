@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 5 QA — global lime brand color migration + round logo (BrandMark) + favicon/meta + Co-Owner Benefits deep redesign. All assertions in the review pass: zero residual gold hex in frontend/src, public/index.html, or backend (server.py + email_service.py); lime #8CFF2E confirmed in index.css :root --onex-gold, OTP email HTML line 556, and email_service _BRAND_GOLD; BrandMark component imported and rendered in Sidebar.js (size 48 glow), MobileTopBar.js (size 36), and Login.js (size 48 glow). Public assets favicon.ico (image/x-icon 772B), apple-touch-icon.png (10057B), and /brand/onex-circle.png (56502B) all return HTTP 200 via the production preview URL. index.html title='OneX Club™ — Dubai Co-Ownership', theme-color=#0A0A0B, apple/icon/mask-icon links all present. Live browser verification: <img src='/brand/onex-circle.png'> visible in login-page header, brand-block (desktop sidebar), and mobile-top-bar with naturalWidth=2000 (asset actually loaded, not a 404 placeholder). mobile-aed-balance class contains bg-[#8CFF2E]/10 border-[#8CFF2E]/30. Co-Owner Benefits page renders all required test-ids (co-owner-benefits-page, co-benefits-hero, co-benefits-tier-rail, tier-card-1..4, tier-section-co-owner-member through tier-section-elite-co-owner, co-benefits-grow-cta, co-benefits-grow-webinars/invite/benefits-ladder). tier-card-1 click opens a modal ([data-testid*=modal]); co-benefits-grow-webinars → /webinars, co-benefits-grow-invite → /invite, co-benefits-grow-benefits-ladder → /benefits-ladder all navigate correctly. Mobile co-owner-benefits at 390x844: scrollWidth===clientWidth===390 (no horizontal overflow). Backend regression: 15/15 targeted pytest cases pass (TestAuth, TestDashboard, TestProperties, TestWebinars, TestReferrals, TestCoOwnerBenefits, TestReferralSignupAttribution).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_assertions": [
+    "grep -rE '#FACC15|#EAB308|#FEF9C3|rgba(250,?\\s*204,\\s*21' /app/frontend/src /app/frontend/public/index.html /app/backend → 0 matches.",
+    "grep '#8CFF2E' present in index.css (--onex-gold + body radial-gradient line 143), server.py line 556 (OTP email label), email_service.py line 18 (_BRAND_GOLD).",
+    "BrandMark.js exists and is imported by Sidebar.js (size 48 glow), MobileTopBar.js (size 36), Login.js (size 48 glow).",
+    "Assets via REACT_APP_BACKEND_URL: /favicon.ico → 200 image/x-icon 772B, /apple-touch-icon.png → 200 image/png 10057B, /brand/onex-circle.png → 200 image/png 56502B.",
+    "index.html: <title>OneX Club™ — Dubai Co-Ownership</title>, meta theme-color=#0A0A0B, <link rel=icon ...favicon.ico>, <link rel=apple-touch-icon ...>, <link rel=mask-icon ...onex-circle.png color=#8CFF2E>, apple-mobile-web-app-title=OneX Club.",
+    "/login (logged out) renders [data-testid=login-page]; <img src='/brand/onex-circle.png'> visible in header with naturalWidth=2000; raw '1X' string absent from login DOM.",
+    "Desktop /dashboard 1920x900: [data-testid=brand-block] in sidebar contains <img src='/brand/onex-circle.png'> (naturalWidth=2000).",
+    "Mobile /dashboard 390x844: [data-testid=mobile-top-bar] contains <img src='/brand/onex-circle.png'>; [data-testid=mobile-aed-balance] class = 'flex items-center gap-1.5 rounded-full bg-[#8CFF2E]/10 border border-[#8CFF2E]/30 px-3 py-1.5'.",
+    "Co-Owner Benefits page test-ids all present: co-owner-benefits-page, co-benefits-hero, co-benefits-tier-rail, co-benefits-grow-cta, co-benefits-grow-webinars, co-benefits-grow-invite, co-benefits-grow-benefits-ladder, tier-card-1, tier-card-2, tier-card-3, tier-card-4, tier-section-co-owner-member, tier-section-elite-co-owner.",
+    "Interactions: click tier-card-1 → modal opens ([data-testid*='modal']); click co-benefits-grow-webinars → URL = /webinars; click co-benefits-grow-invite → URL = /invite; click co-benefits-grow-benefits-ladder → URL = /benefits-ladder.",
+    "Mobile co-owner-benefits 390x844: scrollWidth==clientWidth==390 (no horizontal overflow regression).",
+    "Backend pytest /app/backend/tests/backend_test.py — 15 selected tests across TestAuth/TestDashboard/TestProperties/TestWebinars/TestReferrals/TestCoOwnerBenefits/TestReferralSignupAttribution all PASS."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "NON-BLOCKING / cleanup: the spec was about brand-placeholder '1X' divs. Two pages still render a literal '1X' badge inside an .onex-gold-fill tile that is NOT a brand mark but a content tile/avatar: frontend/src/pages/Dashboard.js line 295 and frontend/src/pages/MyProgress.js lines 62 and 84. These are property/level tile badges, not the sidebar/top-bar/login brand placeholders the spec called out, and they were intentionally out of scope per the spec ('Wherever the old text 1X div was, BrandMark now renders' was satisfied for Sidebar/MobileTopBar/Login). Flagging here so the main agent can decide whether to swap these to BrandMark for full consistency."
+  ],
+  "critical_code_review_comments": [
+    "Color migration relies on a CSS variable swap (--onex-gold: #8CFF2E) while keeping class names like .onex-gold-fill / .onex-gold-text. This is documented in the spec as deliberate to avoid touching 200+ refs, but readers will find class names misleading; consider renaming to .onex-brand-fill / .onex-brand-text in a follow-up cleanup so semantics match.",
+    "BrandMark uses <img src='/brand/onex-circle.png'> without width/height attributes on the <img> tag itself — relies on parent span sizing. This works but can cause a 1-frame layout shift before image decode. Consider adding width/height attrs matching size prop so CLS stays at 0.",
+    "co-benefits-grow CTA test-ids are computed via route.replace('/', ''), which only replaces the first slash. Works today because all three routes are top-level, but if any future route is nested (e.g., /grow/webinars) the test-id will contain a slash and break selectors. Replace with .replaceAll('/', '-') for robustness.",
+    "CoOwnerBenefits.js section test-id is computed via t.name.replace(/\\s+/g, '-').toLowerCase() with a single replace — fine for current 4 tier names, but a future name with punctuation (apostrophe, ampersand) would break testability. Pass an explicit slug field on each tier object instead.",
+    "Two leftover '1X' literal text tiles (Dashboard.js:295, MyProgress.js:62 & 84) using onex-gold-fill — content badges not brand marks, but they still read '1X' which is the legacy placeholder string the brand migration was supposed to retire. Decide intent and either keep as a deliberate motif or swap to BrandMark.",
+    "server.py still ~1781 lines (carried over comment from iteration 4) — no functional issue, but split into routers when convenient."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100% (15/15 targeted regression pass)", "frontend": "100% (all assertions in spec pass)" },
+  "test_credentials": "Bearer/cookie session_token=test_2a912b090cba495aa681e8794bacb6fb (user_qa_1781303183733 / Surya, balance AED 360).",
+  "seed_data_creation": "None this iteration. Read-only verification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Brand-color + logo + favicon + Co-Owner Benefits redesign verified end-to-end. Only non-blocking cleanup outstanding: two literal '1X' content-tile badges on Dashboard.js and MyProgress.js (see action_items) that are deliberately out of the spec but still visually carry the legacy placeholder. Stripe still flagged DUMMY by main agent — out of scope. yarn build wasn't re-run (already verified once per spec); if main agent wants a re-confirm, run `cd /app/frontend && yarn build`. All other gates green.",
+  "rca of the issue": "No bugs to RCA — implementation matches every assertion in the review request."
+}

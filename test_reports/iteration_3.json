@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 3 QA — Referral flow end-to-end. Backend: 44/45 pytest pass (1 logout skip). Added 6 new tests: TestReferralLinkUrl (link uses https://onex.finance), TestReferralClickPublic (invalid code, cookie+dedup, pending visibility), TestReferralSignupAttribution (full click → email-OTP signup → +AED 50 credit → click marked converted). Frontend /invite redesign verified: link card, copy+toast, 6 stat cards, share buttons (WhatsApp opens wa.me→api.whatsapp.com), pipeline tabs (Signups/Pending/Expired/All), and site-wide ReferralCapture confirmed on /dashboard?ref=<code> (clicks_total grew from 12→14 with sessionStorage.onex_ref set).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_assertions": [
+    "GET /api/referrals → referral_link='https://onex.finance/?ref=surya-378738' (uses PUBLIC_APP_URL).",
+    "GET /api/referrals shape has stats {invites_sent, clicks_total, clicks_unique, signups, verified, kyc_completed, pending, expired, aed_earned} + referees[] + pending_clicks[] + expired_clicks[].",
+    "POST /api/referrals/click with invalid code → {ok:false, valid:false} and NO new click row inserted.",
+    "POST /api/referrals/click (anon, no auth) with valid code → {ok:true, valid:true, referrer_name:'Surya'}, sets onex_visitor cookie when missing.",
+    "Second click with same cookie → clicks_total +2 but clicks_unique +1 (visitor-cookie dedup verified).",
+    "Anon click then POST /api/auth/email/start {email, ref:code} + /api/auth/email/verify {email, code:<otp>} (OTP read from email_otps collection) → 200, new user created, referrer aed_balance grew by exactly +50, signups stat +1, referee added with status='verified', click row marked converted (pending decreased).",
+    "Frontend /invite: [data-testid='referral-link-value'] text starts with 'https://onex.finance/?ref='; Copy button writes link to navigator.clipboard and shows 'Referral link copied' toast.",
+    "Frontend /invite: 6 stat cards visible — referral-stat-clicks / signups / pending / verified / kyc / aed.",
+    "Frontend /invite share-whatsapp click opens new tab to wa.me share URL (final URL api.whatsapp.com/send/?text=...&type=custom_url — same WhatsApp share endpoint after redirect).",
+    "Frontend /invite pipeline tabs referral-tab-referees / pending / expired / all all present and clickable; pending tab renders the referral-table (data present).",
+    "Frontend ReferralCapture: navigating to /dashboard?ref=surya-378738 fired POST /api/referrals/click — clicks_total 12→14 (one for /invite mount, one for /dashboard mount); sessionStorage.onex_ref === 'surya-378738'."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FIXED during this iteration: POST /api/auth/email/verify returned 500 with ObjectId serialization error for NEW users (Mongo's insert_one mutates the dict with _id, then FastAPI tries to JSON-encode user_doc inside the {'user': user} response). Added user_doc.pop('_id', None) in both the Google callback path (server.py L401-404) and the email-verify path (server.py L604-607). Without this fix the entire ref→email-OTP attribution flow was broken (every new signup was returning 500 after correctly creating the user + crediting the referrer, leaving the client unable to set a session cookie).",
+    "server.py is now ~1781 lines — split into routers (still recommended from iteration 2; getting harder to navigate).",
+    "_attribute_referral_signup duplicates the referral-insert logic that also exists in track_referral_click (kyc, webinar paths) — could be unified into a single referral-state-machine helper.",
+    "ReferralCapture currently fires on every pathname change (useEffect dep [location.pathname]) but only when ?ref= is present — fine. Consider also clearing/expiring the sessionStorage value after a successful signup so it doesn't haunt subsequent sessions on shared devices.",
+    "InviteEarn.js channels[].href callback is defined inline — fine for now; if more channels are added consider extracting into a shareTemplates module."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (fixed ObjectId leak on new-user signup in BOTH Google and Email-OTP paths)",
+    "/app/backend/tests/backend_test.py (added TestReferralLinkUrl, TestReferralClickPublic, TestReferralSignupAttribution)"
+  ],
+  "success_rate": {
+    "backend": "100% (44/44 pass, 1 logout skip)",
+    "frontend": "100% — all referral flow assertions verified end-to-end"
+  },
+  "test_credentials": "Bearer/cookie test_2a912b090cba495aa681e8794bacb6fb (user_qa_1781303183733 / Surya / referral_code=surya-378738).",
+  "seed_data_creation": "Created+deleted ~3 transient TEST users via /api/auth/email/start + /api/auth/email/verify (with OTP read directly from email_otps collection) and rolled back the referrer's aed_balance by -50 in the same teardown. Net effect on seed state: clicks_total grew (12→14 from manual /dashboard?ref= step + a few during pytest), but balance and referees list were restored.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run full suite: pytest /app/backend/tests/backend_test.py. The TestReferralSignupAttribution test uses mongosh to fetch the OTP from db.email_otps and then cleans up the test user + rolls back the +50 AED credit. If mongosh is not on PATH, the test self-skips with a clear message. Frontend test pattern: inject session_token cookie via page.context.add_cookies BEFORE first navigation (the test cookie has SameSite=None Secure HttpOnly). To re-test ReferralCapture, call api/referrals before+after a page.goto with ?ref=<code> and confirm clicks_total increases.",
+  "rca of the issue": "Pre-existing latent bug (not introduced this iteration but exposed by the new ref-on-signup flow): in /api/auth/email/verify (and /api/auth/google/callback), the NEW-user branch did `await db.users.insert_one(user_doc)` then `user = user_doc`. Motor's insert_one mutates the dict in place to add the BSON ObjectId under the '_id' key. The function returned `{'user': user}` and FastAPI's jsonable_encoder choked on ObjectId → 500 Internal Server Error. Repro: POST /api/auth/email/start {email:'brand-new@x.com', ref:'surya-378738'}, fetch OTP from db.email_otps, POST /api/auth/email/verify {email, code} → 500. Mitigation applied: user_doc.pop('_id', None) right after insert_one in both new-user code paths. After fix the same flow returns 200, sets session cookie, credits referrer +AED 50, and marks the matching click row converted=True. All 44 backend tests + 11 frontend assertions now green."
+}

@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 8 — Full regression of 5 P0 items (Activity page, tier rename Member/Insider/Co-Owner/Pro-Owner, modal trigger fix, email brand mark). 6/6 backend pytest cases PASS. All 8 frontend modal-trigger flows (4 tier-cards + 4 tier-details on /co-owner-benefits) open LevelDetailModal with the correct canonical tier name and close cleanly. Dashboard 'View All' link now navigates to /activity (was bare button before). /activity renders 62 rows + summary widget (Events 62, +AED 3,395). /benefits-ladder tier-* cards (tier-member/insider/co-owner/pro-owner) open modal with canonical names; level-action-0 navigates to /webinars. Sidebar shows 'Member Tier' on both desktop + mobile (no 'Cadet' fallback leaking). Backend migration confirmed clean: zero legacy tier strings in leaderboard, co_owner_benefits, or users.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_assertions": [
+    "GET /api/benefits-ladder returns 4 tiers in order Member(500) → Insider(2500) → Co-Owner(5000) → Pro-Owner(10000); current_tier='Member', next_tier='Insider' for QA user.",
+    "GET /api/co-owner-benefits — every benefit.unlock_tier ∈ {Member, Insider, Co-Owner, Pro-Owner}. No legacy strings present.",
+    "GET /api/leaderboard?range=all — all rows' tier ∈ canonical set. No 'Partner'/'Inner Circle'/'Founder'/'Cadet'.",
+    "GET /api/dashboard — user.tier='Member' (canonical).",
+    "GET /api/activity?limit=50 → 200 with shape {items:[...], summary:{count, aed_earned_visible}}; each item has id, kind, title, reward, created_at. summary.count == len(items). Tested limit=5 — clamped correctly.",
+    "Frontend /activity: data-testid='activity-page' visible, data-testid='activity-list' visible, 62 rows matching pattern data-testid='activity-row-{id}'. activity-empty NOT present (data exists). Sidebar reads 'Member Tier'.",
+    "Frontend Dashboard → data-testid='recent-activity-view-all' click → URL transitions to /activity. PASS.",
+    "Frontend /co-owner-benefits: All 4 tier-cards (tier-card-1..4) open data-testid='level-detail-modal' with the correct tier text inside (Member, Insider, Co-Owner, Pro-Owner respectively). Close via data-testid='level-detail-close' works.",
+    "Frontend /co-owner-benefits: All 4 tier-details-{1..4} buttons also open the modal with the correct tier name.",
+    "Frontend /benefits-ladder: tier-member, tier-insider, tier-co-owner, tier-pro-owner cards exist. Clicking tier-member opens modal with 'Member' visible. Clicking level-action-0 inside modal navigated to /webinars (modal closes via route change).",
+    "Sidebar/MobileDrawer user pill: 'Member Tier' visible on desktop (1920x1080) and mobile (390x844). No 'Cadet Tier' fallback leaking anywhere in page body."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_tiers_activity.py",
+    "/app/test_reports/pytest/iteration8_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is at 2169 lines — still growing. Recommended refactor (split into routers/activity.py, routers/tiers.py, routers/benefits.py) remains valid from prior iterations.",
+    "Iteration 7 noted email shell used external <img>. Iteration 8 replaced it with a CSS-rendered '1X' lime-green circle inside email_service._shell() — bulletproof for clients that block images. Not directly testable here without sending real mail; flagged for visual QA in Gmail/Outlook clients.",
+    "Activity feed limit param is clamped to max(1, min(limit, 100)) but the to_list(limit) call passes the *unclamped* limit. If a caller passes limit=-5, max() promotes to 1 in the cursor.limit() call but to_list(-5) may behave undefined in Motor. Low-impact (no public path exercises this) but worth tightening to to_list(clamped_limit)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_tiers_activity.py"
+  ],
+  "success_rate": {"backend": "100% (6/6 pytest)", "frontend": "100% (activity page render + dashboard nav + 8 modal triggers + benefits-ladder modal + level-action nav + desktop/mobile sidebar pill)"},
+  "test_credentials": "Bearer test_2a912b090cba495aa681e8794bacb6fb (hello@onex.finance, user_qa_1781303183733, tier=Member, balance AED 930).",
+  "seed_data_creation": "None (read-only regression).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression file at /app/backend/tests/test_iteration8_tiers_activity.py. The test handles both `{benefits:[...]}` and `{items:[...]}` payload shapes for /api/co-owner-benefits — the live API uses `benefits`. The /benefits-ladder testids use the slug form (tier-member, tier-insider, tier-co-owner, tier-pro-owner), while /co-owner-benefits uses the numeric form (tier-card-1..4 + tier-details-1..4). Memory file /app/memory/test_credentials.md still says 'Tier: Cadet' on line 8 — that's stale; the QA user is now 'Member' after the migration. Recommend the main agent update test_credentials.md line 8 to 'Tier: Member' to avoid future confusion.",
+  "rca of the issue": "N/A — all 5 P0 items work as specified. The one initial test failure (co-owner-benefits returned 'no benefits') was a test-side issue: the response key is `benefits`, not `items`. Fixed in the test fixture and all 6 tests pass."
+}
