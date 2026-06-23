@@ -49,7 +49,16 @@ mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 
-app = FastAPI(title="OneX Club API")
+app = FastAPI(
+    title="OneX Club API",
+    description="Mobile-app integration spec. See /app/docs/MOBILE_NATIVE_INTEGRATION.md.",
+    version="1.0.0",
+    # Expose under /api/* so Kubernetes ingress routes to the backend (default
+    # /openapi.json is served by the frontend SPA fallback otherwise).
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 api = APIRouter(prefix="/api")
 
 
