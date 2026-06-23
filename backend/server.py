@@ -2117,7 +2117,7 @@ async def veriff_webhook(request: Request, background: BackgroundTasks):
                 await grant_aed(vendor, granted)
                 await add_activity(vendor, "milestone", "Completed: Complete KYC", granted)
                 fresh = await db.users.find_one({"user_id": vendor}, {"_id": 0})
-                background.add_task(send_milestone_done, user["email"], user["name"], "Complete KYC", granted, fresh["aed_balance"], "https://onex.club")
+                background.add_task(send_milestone_done, user["email"], user["name"], "Complete KYC", granted, fresh["aed_balance"], _app_url(request))
     return {"ok": True}
 
 
