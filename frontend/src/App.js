@@ -21,7 +21,12 @@ import SupportCenter from "@/pages/SupportCenter";
 import Settings from "@/pages/Settings";
 import Activity from "@/pages/Activity";
 import GoogleAuthCallback from "@/pages/GoogleAuthCallback";
+import LearningJourney from "@/pages/LearningJourney";
 import StoreMockups from "@/pages/StoreMockups";
+import AdminGuard from "@/admin/AdminGuard";
+import AdminLayout from "@/admin/AdminLayout";
+import AdminDashboard from "@/admin/AdminDashboard";
+import { AdminUsers, AdminProperties, AdminWebinars, AdminCommunity, AdminBenefits, AdminAllocations, AdminNotify } from "@/admin/AdminPages";
 
 const AppRouter = () => {
   const location = useLocation();
@@ -35,6 +40,19 @@ const AppRouter = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
       <Route path="/store-mockups" element={<StoreMockups />} />
+
+      {/* ─── Admin routes (super admin only) ──────────────────────────── */}
+      <Route path="/admin" element={<AdminGuard><AdminLayout /></AdminGuard>}>
+        <Route index element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="properties" element={<AdminProperties />} />
+        <Route path="webinars" element={<AdminWebinars />} />
+        <Route path="community" element={<AdminCommunity />} />
+        <Route path="benefits" element={<AdminBenefits />} />
+        <Route path="allocations" element={<AdminAllocations />} />
+        <Route path="notify" element={<AdminNotify />} />
+      </Route>
       <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
@@ -50,6 +68,7 @@ const AppRouter = () => {
         <Route path="/support" element={<SupportCenter />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/activity" element={<Activity />} />
+        <Route path="/learning-journey" element={<LearningJourney />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

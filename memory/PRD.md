@@ -133,6 +133,22 @@ currency surface. Personalization based on user stage at all times.
 - **Dashboard + MyProgress "Next Reward" CTAs**: card now shows two buttons — primary "Go to action →" (deep-links to the page where the next milestone can be completed) + secondary "⚡ Top up AED" (jumps to `/benefits-ladder#topup`).
 - **Benefits Ladder horizontal connector centered + animated**: line now passes through icon vertical midpoints (top:56px, runs from 12.5%→87.5% horizontal — true icon-center to icon-center). New `onex-shimmer-sweep` keyframe sweeps a lime gradient along the line continuously to draw the eye toward the next tier. Honors `prefers-reduced-motion`.
 
+## What's implemented (2026-06-23 — Admin panel + Learning Journey + version endpoint)
+- **Super-admin panel** at `/admin/dashboard` — single-allowlist guard (`surya@onex.exchange` via `ADMIN_EMAILS` env), separate `AdminLayout` shell with sidebar + 8 sections.
+- **17 admin endpoints** under `/api/admin/*`:
+  - `GET /overview` — KPI cards (users, properties, webinars, referrals, AED distributed, tier distribution, top 5 referrers)
+  - `GET /users?q&tier&limit` + `POST /users/{id}/ban|unban` — searchable table with referral counts
+  - `GET/POST/DELETE /properties` — CRUD with `launch_date` driving the Dashboard countdown
+  - `GET/POST/DELETE /webinars` — CRUD with **Luma RSVP link** + **YouTube/Vimeo recording link** + attendance counts
+  - `GET/POST/DELETE /community-updates` — CRUD with archive
+  - `GET/POST /benefits/toggle` — show/hide each Co-Owner Benefit
+  - `GET/POST /allocation-interests/archive` — list + archive
+  - `POST /notify/one|bulk|allocation-opened` + `GET /notifications/log` — manual single nudge, tier-filtered broadcast, **one-click "🔥 Allocation opened — 24h priority window"** that emails everyone with `reminder_opt_in:true` for a property, all audited
+- **Learning Journey** page at `/learning-journey` — joined webinars grouped Upcoming · Past w/ recording · Past pending. Recording playback opens centered modal with YouTube/Vimeo iframe (auto-converts watch?v= URLs to /embed/).
+- **Backend `GET /api/webinars/my`** — powers Learning Journey, includes recordings even for sessions the user didn't register for.
+- **`GET /api/version`** — git SHA + start time + python version (for native dev's QA team).
+- **Dashboard "Join the Launch Waitlist"** now respects `joined_waitlist` — switches to amber "✓ Waitlist Joined · See updates" pill (matching the Properties page fix).
+
 ## Backlog (P1)
 - India region segment: AED/INR switch, 0.1g pure 999 gold-coin SIP (15-day), Razorpay/UPI, Goa tokenized real estate flow, OneX Wealth Club shipping kit.
 - Stripe LIVE (currently DUMMY); production checkout + webhook receipts.

@@ -197,10 +197,19 @@ const Dashboard = () => {
             </div>
 
             <button
-              onClick={() => navigate("/properties")}
+              onClick={() => navigate(spotlight_property.joined_waitlist
+                ? `/properties?highlight=${spotlight_property.id}`
+                : "/properties")}
               data-testid="dashboard-view-property-btn"
-              className="mt-5 w-full btn-gold"
-            >Join the Launch Waitlist <ArrowRight size={16} /></button>
+              className={`mt-5 w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full text-[14px] font-semibold transition-all ${
+                spotlight_property.joined_waitlist
+                  ? "bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/40 hover:bg-[#F59E0B]/25"
+                  : "btn-gold"
+              }`}
+            >{spotlight_property.joined_waitlist
+              ? <><Check size={14}/> Waitlist Joined · See updates</>
+              : <>Join the Launch Waitlist <ArrowRight size={16} /></>}
+            </button>
           </div>
         )}
 

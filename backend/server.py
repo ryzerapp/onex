@@ -174,6 +174,22 @@ async def get_current_user(
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 
+# -------------------- Admin guard --------------------
+# Single-allowlist super-admin model. Anyone NOT in this set hitting an
+# /api/admin/* route gets a 403. Centralised here so we can swap in role-based
+# access control later without touching every endpoint.
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "surya@onex.exchange").split(",") if e.strip()}
+
+
+async def require_admin(user: CurrentUser) -> dict:
+    if (user.get("email") or "").lower() not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin only")
+    return user
+
+
+AdminUser = Annotated[dict, Depends(require_admin)]
+
+
 # -------------------- Seed data --------------------
 PROPERTY_SEED = [
     {
@@ -1047,7 +1063,14 @@ async def dashboard(user: CurrentUser):
     next_milestone = pending or upcoming
     next_tier = next_tier_info(user["aed_balance"])
 
-    spotlight_doc = await db.properties.find_one({}, {"_id": 0}, sort=[("launch_date", 1)])
+    spotlight_doc = await db.properties.find_one({"archived": {"$ne": True}}, {"_id": 0}, sort=[("launch_date", 1)])
+    if spotlight_doc:
+        # Stamp `joined_waitlist` so the Dashboard CTA can show the amber
+        # "Waitlist Joined" state instead of asking the user to re-join.
+        joined = await db.waitlist_entries.find_one({
+            "user_id": user["user_id"], "property_id": spotlight_doc.get("id"),
+        })
+        spotlight_doc["joined_waitlist"] = bool(joined)
 
     next_webinar = await db.webinars.find_one({"status": "upcoming"}, {"_id": 0}, sort=[("date", 1)])
 
@@ -1482,6 +1505,29 @@ async def list_webinars(user: CurrentUser, tab: Optional[str] = "upcoming"):
 class WebinarAction(BaseModel):
     webinar_id: str
     ref: Optional[str] = None
+
+
+@api.get("/webinars/my")
+async def my_webinars(user: CurrentUser):
+    """Powers the Learning Journey page — every webinar the user has registered for,
+    sorted by start date desc; recordings included so the page can group past+rec."""
+    regs = await db.webinar_registrations.find(
+        {"user_id": user["user_id"]}, {"_id": 0},
+    ).to_list(200)
+    reg_ids = [r["webinar_id"] for r in regs]
+    if not reg_ids:
+        return {"items": []}
+    items = await db.webinars.find(
+        {"id": {"$in": reg_ids}, "archived": {"$ne": True}}, {"_id": 0},
+    ).sort("starts_at", -1).to_list(200)
+    # Also surface non-archived recorded sessions even if the user didn't register
+    # for the live one — encourages catch-up.
+    extra = await db.webinars.find(
+        {"recording_url": {"$exists": True, "$ne": ""}, "id": {"$nin": reg_ids},
+         "archived": {"$ne": True}},
+        {"_id": 0},
+    ).sort("starts_at", -1).limit(20).to_list(20)
+    return {"items": items + extra}
 
 
 @api.post("/webinars/register")
@@ -2463,6 +2509,52 @@ async def stripe_webhook(request: Request):
 
 # -------------------- Wire app --------------------
 app.include_router(api)
+
+# Admin router — late-bind dependencies so admin_routes.py can stay importable.
+from admin_routes import build_admin_router  # noqa: E402
+
+app.include_router(build_admin_router({
+    "db": db,
+    "require_admin": require_admin,
+    "send_milestone_done": send_milestone_done,
+    "send_property_reminder_email": send_property_reminder_email,
+    "_app_url": _app_url,
+    "add_activity": add_activity,
+}))
+
+
+# -------------------- /api/version (build info) --------------------
+import platform as _platform  # noqa: E402
+import subprocess as _subprocess  # noqa: E402
+
+def _git_sha() -> str:
+    try:
+        out = _subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT_DIR.parent,
+            stderr=_subprocess.DEVNULL, timeout=2,
+        )
+        return out.decode().strip()
+    except Exception:
+        return "unknown"
+
+
+_BUILD_STARTED_AT = datetime.now(timezone.utc).isoformat()
+_GIT_SHA = _git_sha()
+
+
+@app.get("/api/version")
+async def get_version() -> dict:
+    """Public — used by the long-press footer gesture in the React app and
+    by the native dev's QA team to confirm the bundle they're testing against."""
+    return {
+        "app": "OneX Club API",
+        "version": "1.0.0",
+        "git_sha": _GIT_SHA,
+        "started_at": _BUILD_STARTED_AT,
+        "python": _platform.python_version(),
+        "platform": _platform.system(),
+    }
+
 
 app.add_middleware(
     CORSMiddleware,
