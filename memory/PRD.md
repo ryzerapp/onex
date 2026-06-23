@@ -116,6 +116,13 @@ currency surface. Personalization based on user stage at all times.
 - **Bulletproof email brand mark**: replaced `<img src="https://www.onexassets.com/brand/onex-circle.png">` in `email_service._shell()` with a CSS-rendered "1X" lime-green circle (no external image, no proxy blocking, renders in every email client including Gmail dark mode).
 - **Sidebar/MobileDrawer**: fallback tier label changed from "Cadet" → "Member".
 
+## What's implemented (2026-06-23 — production custom domain + self-hosted Google OAuth)
+- **Custom domain `club.onex.exchange`** attached to production deployment (Cloudflare → Emergent). Verified HTTPS 200, valid Let's Encrypt cert, `/api/*` routing intact.
+- **Self-hosted Google OAuth 2.0** (replaces Emergent-managed `auth.emergentagent.com`): new endpoints `GET /api/auth/google/login` (CSRF state + redirect to Google) and `GET /api/auth/google/callback` (code-for-token exchange via httpx, userinfo fetch, user upsert, session cookie). Frontend bounce route `/auth/google/callback` forwards Google's redirect to the backend through Kubernetes ingress. Now Google's consent screen says "to continue to club.onex.exchange" with OneX branding — zero Emergent attribution.
+- **Env**: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `ONEX_APP_URL=https://club.onex.exchange` added to `/app/backend/.env`.
+- **"Made with Emergent" badge removed** site-wide (web + mobile responsive + Capacitor) via `display:none` on `#emergent-badge` plus belt-and-suspenders CSS in `index.css`.
+- **Email CTA URLs**: replaced one hardcoded `"https://onex.club"` with `_app_url(request)`; all transactional email CTAs now route to `https://club.onex.exchange`.
+
 ## Backlog (P1)
 - India region segment: AED/INR switch, 0.1g pure 999 gold-coin SIP (15-day), Razorpay/UPI, Goa tokenized real estate flow, OneX Wealth Club shipping kit.
 - Stripe LIVE (currently DUMMY); production checkout + webhook receipts.

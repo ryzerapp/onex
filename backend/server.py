@@ -31,7 +31,7 @@ from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout,
 )
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
@@ -627,6 +627,227 @@ async def auth_logout(response: Response, session_token: Optional[str] = Cookie(
         await db.user_sessions.delete_one({"session_token": session_token})
     response.delete_cookie("session_token", path="/", samesite="none", secure=True)
     return {"ok": True}
+
+
+# -------------------- Self-hosted Google OAuth (replaces Emergent-managed flow) --------------------
+# REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH.
+# The redirect_uri is always derived dynamically from the inbound Origin/Referer/Host so it
+# matches whichever frontend domain (preview / production / localhost) initiated the flow.
+GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+
+def _frontend_origin_from_request(request: Request) -> str:
+    """Resolve the frontend origin that initiated this OAuth flow — used to build
+    redirect_uri (must match Google Cloud Console exactly) and the post-login bounce URL."""
+    # Prefer explicit Origin header, fall back to Referer, finally to ONEX_APP_URL env.
+    origin = request.headers.get("origin")
+    if not origin:
+        ref = request.headers.get("referer")
+        if ref:
+            from urllib.parse import urlparse
+            p = urlparse(ref)
+            if p.scheme and p.netloc:
+                origin = f"{p.scheme}://{p.netloc}"
+    if not origin:
+        origin = os.environ.get("ONEX_APP_URL", "").rstrip("/")
+    return (origin or "").rstrip("/")
+
+
+@api.get("/auth/google/login")
+async def google_login(request: Request, ref: Optional[str] = None, next: Optional[str] = None):
+    """Initiates the Google OAuth flow. Stores a CSRF state token + the originating
+    frontend origin so the callback can land back on the same domain that started it."""
+    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+    if not client_id:
+        raise HTTPException(status_code=500, detail="Google OAuth not configured")
+
+    origin = _frontend_origin_from_request(request)
+    if not origin:
+        raise HTTPException(status_code=400, detail="Could not resolve frontend origin")
+
+    redirect_uri = f"{origin}/auth/google/callback"
+    state = uuid.uuid4().hex
+    await db.oauth_states.insert_one({
+        "state": state,
+        "origin": origin,
+        "ref": (ref or "").strip().lower() or None,
+        "next": next or "/dashboard",
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
+    })
+
+    from urllib.parse import urlencode
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "include_granted_scopes": "true",
+        "prompt": "select_account",
+        "state": state,
+    }
+    return RedirectResponse(f"{GOOGLE_AUTH_ENDPOINT}?{urlencode(params)}", status_code=302)
+
+
+@api.get("/auth/google/callback")
+async def google_callback(request: Request, response: Response, background: BackgroundTasks,
+                          code: Optional[str] = None, state: Optional[str] = None,
+                          error: Optional[str] = None):
+    """Google redirects here with ?code=...&state=... — we exchange code for tokens,
+    fetch the user profile, upsert the user, create a session, and bounce to /dashboard."""
+    # Resolve origin first so we can always redirect-with-error rather than throw raw 500.
+    state_doc = await db.oauth_states.find_one({"state": state}) if state else None
+    origin = (state_doc or {}).get("origin") or _frontend_origin_from_request(request) or os.environ.get("ONEX_APP_URL", "").rstrip("/")
+
+    def _err_redirect(msg: str) -> RedirectResponse:
+        from urllib.parse import quote
+        return RedirectResponse(f"{origin}/login?error={quote(msg)}", status_code=302)
+
+    if error:
+        return _err_redirect(error)
+    if not code or not state or not state_doc:
+        return _err_redirect("invalid_state")
+
+    expires_at = state_doc.get("expires_at")
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        await db.oauth_states.delete_one({"state": state})
+        return _err_redirect("state_expired")
+
+    # One-time use: delete the state record before any external call.
+    await db.oauth_states.delete_one({"state": state})
+
+    redirect_uri = f"{origin}/auth/google/callback"
+    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+    client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
+    if not (client_id and client_secret):
+        return _err_redirect("oauth_not_configured")
+
+    # 1) Exchange auth-code for access_token.
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            tok = await http.post(GOOGLE_TOKEN_ENDPOINT, data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            })
+        if tok.status_code != 200:
+            log.warning("google token exchange failed: %s %s", tok.status_code, tok.text[:200])
+            return _err_redirect("token_exchange_failed")
+        access_token = tok.json().get("access_token")
+        if not access_token:
+            return _err_redirect("no_access_token")
+
+        # 2) Fetch profile (email, name, picture).
+        async with httpx.AsyncClient(timeout=15) as http:
+            ui = await http.get(GOOGLE_USERINFO_ENDPOINT, headers={"Authorization": f"Bearer {access_token}"})
+        if ui.status_code != 200:
+            return _err_redirect("userinfo_failed")
+        profile = ui.json()
+    except httpx.HTTPError as e:
+        log.exception("google oauth http error: %s", e)
+        return _err_redirect("network_error")
+
+    email = (profile.get("email") or "").strip().lower()
+    if not email:
+        return _err_redirect("no_email_returned")
+    if not profile.get("verified_email", True):
+        return _err_redirect("email_not_verified")
+
+    name = profile.get("name") or email.split("@")[0]
+    picture = profile.get("picture")
+
+    # 3) Upsert user (matches existing /auth/session shape so legacy users sign right in).
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    is_new_user = user is None
+    if is_new_user:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        user_doc = {
+            "user_id": user_id, "email": email, "name": name, "picture": picture,
+            "tier": "Member", "aed_balance": 100,
+            "referral_code": _make_referral_code(name),
+            "referred_by": None, "created_at": _now(),
+        }
+        await db.users.insert_one(user_doc)
+        await ensure_user_milestones(user_id)
+        await add_activity(user_id, "join", "Joined the OneX waitlist", reward=100)
+        user_doc.pop("_id", None)
+        user = user_doc
+    else:
+        if picture and not user.get("picture"):
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"picture": picture}})
+            user["picture"] = picture
+        await ensure_user_milestones(user["user_id"])
+
+    # 4) Create our own session token (independent of Google's tokens).
+    session_token = f"google_{uuid.uuid4().hex}"
+    await db.user_sessions.insert_one({
+        "user_id": user["user_id"],
+        "session_token": session_token,
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    # 5) Referral attribution + welcome email + Brevo sync (only on first signup).
+    if is_new_user:
+        ref_code = state_doc.get("ref")
+        if ref_code:
+            referrer = await db.users.find_one({"referral_code": ref_code})
+            if referrer and referrer["user_id"] != user["user_id"]:
+                await db.users.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {"referred_by": referrer["user_id"]}},
+                )
+                user["referred_by"] = referrer["user_id"]
+                await db.referrals.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "referrer_id": referrer["user_id"],
+                    "referee_id": user["user_id"],
+                    "referee_email": user["email"],
+                    "verified": True,
+                    "kyc_completed": False,
+                    "created_at": _now(),
+                })
+                await grant_aed(referrer["user_id"], 50)
+                await add_activity(referrer["user_id"], "referral", f"Referred {user['name']}", 50)
+                await _mark_click_converted(ref_code, request)
+                background.add_task(
+                    send_milestone_done, referrer["email"], referrer["name"],
+                    f"Friend joined · {user['name']}", 50,
+                    referrer["aed_balance"] + 50, _app_url(request),
+                )
+        background.add_task(send_welcome, user["email"], user["name"], _app_url(request))
+        background.add_task(
+            brevo_upsert_contact,
+            email=user["email"], name=user["name"], ref_code=user["referral_code"],
+            tier=user.get("tier", "Member"), aed_balance=user.get("aed_balance", 0),
+            source="google",
+        )
+
+    # 6) Bounce back to the originating frontend with the cookie set + a marker query
+    #    that the React app reads to refresh /auth/me.
+    next_path = state_doc.get("next") or "/dashboard"
+    if not next_path.startswith("/"):
+        next_path = "/dashboard"
+    bounce = RedirectResponse(f"{origin}{next_path}?auth=google", status_code=302)
+    bounce.set_cookie(
+        key="session_token",
+        value=session_token,
+        max_age=7 * 24 * 60 * 60,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+    )
+    return bounce
 
 
 # -------------------- Email magic-link sign-in --------------------

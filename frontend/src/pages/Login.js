@@ -19,6 +19,22 @@ const Login = () => {
     const params = new URLSearchParams(window.location.search);
     const refCode = params.get("ref");
     if (refCode) { try { sessionStorage.setItem("onex_ref", refCode); } catch (e) { /* ignore */ } }
+    // After a successful Google OAuth round-trip the backend appends `?auth=google`.
+    // Refresh the auth context so the session cookie is recognised, then bounce to dashboard.
+    if (params.get("auth") === "google") {
+      api.get("/auth/me").then(({ data }) => {
+        if (data?.user) {
+          setUser(data.user);
+          navigate("/dashboard", { replace: true });
+        }
+      }).catch(() => {});
+      return;
+    }
+    // OAuth error surfaced by the callback (?error=token_exchange_failed etc.).
+    const oauthError = params.get("error");
+    if (oauthError) {
+      toast.error(`Google sign-in failed: ${oauthError.replace(/_/g, " ")}`);
+    }
     // Email pre-filled from the waitlist welcome email's CTA — skip the "choose method" step
     // and land the visitor directly in the email-OTP entry box (or they can hit Back for Google).
     const prefillEmail = params.get("email");
@@ -26,13 +42,20 @@ const Login = () => {
       setEmail(prefillEmail);
       setMode("email-input");
     }
-  }, []);
+  }, [navigate, setUser]);
 
   React.useEffect(() => { if (user) navigate("/dashboard", { replace: true }); }, [user, navigate]);
 
-  const redirectUrl = typeof window !== "undefined" ? window.location.origin + "/dashboard" : "/dashboard";
-  const oauthHref = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-  const handleGoogle = (e) => { e.preventDefault(); window.location.href = oauthHref; };
+  // Self-hosted Google OAuth — backend handles redirect to Google with the right
+  // origin-derived redirect_uri. Carries any active ?ref=<code> through to the callback.
+  // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH.
+  const handleGoogle = (e) => {
+    e.preventDefault();
+    let ref = "";
+    try { ref = sessionStorage.getItem("onex_ref") || ""; } catch { /* ignore */ }
+    const qs = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+    window.location.href = `${process.env.REACT_APP_BACKEND_URL}/api/auth/google/login${qs}`;
+  };
 
   const startEmail = async (e) => {
     e?.preventDefault();
@@ -40,7 +63,7 @@ const Login = () => {
     setBusy(true);
     try {
       let ref = null;
-      try { ref = sessionStorage.getItem("onex_ref"); } catch {}
+      try { ref = sessionStorage.getItem("onex_ref"); } catch (e) { /* ignore */ }
       await api.post("/auth/email/start", { email: email.trim().toLowerCase(), ref });
       toast.success("Check your inbox for the 6-digit code.");
       setMode("otp-input");
@@ -55,7 +78,7 @@ const Login = () => {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/email/verify", { email: email.trim().toLowerCase(), code: otp.trim() });
-      try { sessionStorage.removeItem("onex_ref"); } catch {}
+      try { sessionStorage.removeItem("onex_ref"); } catch (e) { /* ignore */ }
       setUser(data.user);
       navigate("/dashboard", { replace: true });
     } catch (err) {
@@ -84,7 +107,7 @@ const Login = () => {
 
           {mode === "choose" && (
             <div className="mt-8 space-y-3">
-              <a href={oauthHref} onClick={handleGoogle} data-testid="login-google-btn" className="w-full btn-gold !py-4 text-[15px]">
+              <a href="#" onClick={handleGoogle} data-testid="login-google-btn" className="w-full btn-gold !py-4 text-[15px]">
                 Continue with Google <ArrowRight size={18} />
               </a>
               <button onClick={() => setMode("email-input")} data-testid="login-email-toggle" className="w-full btn-ghost !py-4 text-[14px]">

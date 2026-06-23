@@ -20,6 +20,7 @@ import CoOwnerBenefits from "@/pages/CoOwnerBenefits";
 import SupportCenter from "@/pages/SupportCenter";
 import Settings from "@/pages/Settings";
 import Activity from "@/pages/Activity";
+import GoogleAuthCallback from "@/pages/GoogleAuthCallback";
 
 const AppRouter = () => {
   const location = useLocation();
@@ -31,6 +32,7 @@ const AppRouter = () => {
       <ReferralCapture />
       <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
       <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
