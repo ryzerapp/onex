@@ -83,6 +83,7 @@ class EmailStart(BaseModel):
 class EmailVerify(BaseModel):
     email: str
     code: str
+    remember: Optional[bool] = False  # True → 30-day session; False → 7-day default.
 
 
 # Jitsi/JaaS (8x8.vc) room URL generator.
@@ -422,6 +423,24 @@ async def grant_aed(user_id: str, amount: int):
 # -------------------- Auth routes --------------------
 EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
+# Session lifetime presets — controlled by the "Stay signed in for 30 days" toggle.
+SESSION_DAYS_DEFAULT = 7
+SESSION_DAYS_REMEMBER = 30
+
+
+def _session_days(remember: bool) -> int:
+    return SESSION_DAYS_REMEMBER if remember else SESSION_DAYS_DEFAULT
+
+
+def _set_session_cookie(response: Response, token: str, remember: bool) -> None:
+    """Single source of truth for the session_token cookie. SameSite=None+Secure
+    is required because the API runs on a different sub-domain than the SPA."""
+    response.set_cookie(
+        key="session_token", value=token,
+        max_age=_session_days(remember) * 24 * 60 * 60,
+        httponly=True, secure=True, samesite="none", path="/",
+    )
+
 
 def _make_referral_code(name: str) -> str:
     base = "".join(c for c in name.lower() if c.isalnum())[:6] or "onex"
@@ -656,9 +675,11 @@ def _frontend_origin_from_request(request: Request) -> str:
 
 
 @api.get("/auth/google/login")
-async def google_login(request: Request, ref: Optional[str] = None, next: Optional[str] = None):
+async def google_login(request: Request, ref: Optional[str] = None, next: Optional[str] = None,
+                       remember: Optional[bool] = False):
     """Initiates the Google OAuth flow. Stores a CSRF state token + the originating
-    frontend origin so the callback can land back on the same domain that started it."""
+    frontend origin so the callback can land back on the same domain that started it.
+    `remember=true` extends the resulting session to 30 days."""
     client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
     if not client_id:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
@@ -674,6 +695,7 @@ async def google_login(request: Request, ref: Optional[str] = None, next: Option
         "origin": origin,
         "ref": (ref or "").strip().lower() or None,
         "next": next or "/dashboard",
+        "remember": bool(remember),
         "created_at": datetime.now(timezone.utc),
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
     })
@@ -788,11 +810,12 @@ async def google_callback(request: Request, response: Response, background: Back
         await ensure_user_milestones(user["user_id"])
 
     # 4) Create our own session token (independent of Google's tokens).
+    remember = bool(state_doc.get("remember", False))
     session_token = f"google_{uuid.uuid4().hex}"
     await db.user_sessions.insert_one({
         "user_id": user["user_id"],
         "session_token": session_token,
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=_session_days(remember)),
         "created_at": datetime.now(timezone.utc),
     })
 
@@ -841,7 +864,7 @@ async def google_callback(request: Request, response: Response, background: Back
     bounce.set_cookie(
         key="session_token",
         value=session_token,
-        max_age=7 * 24 * 60 * 60,
+        max_age=_session_days(remember) * 24 * 60 * 60,
         httponly=True,
         secure=True,
         samesite="none",
@@ -990,15 +1013,13 @@ async def auth_email_verify(payload: EmailVerify, request: Request, response: Re
         )
 
     session_token = f"email_{uuid.uuid4().hex}"
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    remember = bool(payload.remember)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=_session_days(remember))
     await db.user_sessions.insert_one({
         "user_id": user["user_id"], "session_token": session_token,
         "expires_at": expires_at, "created_at": datetime.now(timezone.utc),
     })
-    response.set_cookie(
-        key="session_token", value=session_token,
-        max_age=7 * 24 * 60 * 60, httponly=True, secure=True, samesite="none", path="/",
-    )
+    _set_session_cookie(response, session_token, remember)
     return {"user": user}
 
 

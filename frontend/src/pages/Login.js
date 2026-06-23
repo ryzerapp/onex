@@ -14,6 +14,7 @@ const Login = () => {
   const [email, setEmail] = React.useState("");
   const [otp, setOtp] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [remember, setRemember] = React.useState(true);  // Default ON — sticky 30-day session.
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -53,7 +54,10 @@ const Login = () => {
     e.preventDefault();
     let ref = "";
     try { ref = sessionStorage.getItem("onex_ref") || ""; } catch { /* ignore */ }
-    const qs = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+    const params = new URLSearchParams();
+    if (ref) params.set("ref", ref);
+    if (remember) params.set("remember", "true");
+    const qs = params.toString() ? `?${params.toString()}` : "";
     window.location.href = `${process.env.REACT_APP_BACKEND_URL}/api/auth/google/login${qs}`;
   };
 
@@ -77,7 +81,7 @@ const Login = () => {
     if (otp.length !== 6) { toast.error("Enter the 6-digit code"); return; }
     setBusy(true);
     try {
-      const { data } = await api.post("/auth/email/verify", { email: email.trim().toLowerCase(), code: otp.trim() });
+      const { data } = await api.post("/auth/email/verify", { email: email.trim().toLowerCase(), code: otp.trim(), remember });
       try { sessionStorage.removeItem("onex_ref"); } catch (e) { /* ignore */ }
       setUser(data.user);
       navigate("/dashboard", { replace: true });
@@ -105,8 +109,38 @@ const Login = () => {
             OneX Club is invitation-only. Sign in with Google, or use your email — we{"’"}ll send you a 6-digit code.
           </p>
 
+          {(mode === "choose" || mode === "email-input") && (
+            <label
+              className="mt-6 flex items-center gap-2.5 cursor-pointer select-none group"
+              data-testid="login-remember-label"
+            >
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                data-testid="login-remember-toggle"
+                className="peer sr-only"
+              />
+              <span
+                aria-hidden="true"
+                className="w-4 h-4 rounded-[5px] border border-[#3F3F46] bg-[#15161A] grid place-items-center
+                           peer-checked:bg-[#8CFF2E] peer-checked:border-[#8CFF2E]
+                           transition-colors group-hover:border-zinc-400"
+              >
+                {remember && (
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                    <path d="M2.5 6.5L4.7 8.7L9.5 3.5" stroke="#0A0A0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </span>
+              <span className="text-[13px] text-zinc-400 group-hover:text-zinc-200">
+                Stay signed in for 30 days
+              </span>
+            </label>
+          )}
+
           {mode === "choose" && (
-            <div className="mt-8 space-y-3">
+            <div className="mt-4 space-y-3">
               <a href="#" onClick={handleGoogle} data-testid="login-google-btn" className="w-full btn-gold !py-4 text-[15px]">
                 Continue with Google <ArrowRight size={18} />
               </a>
@@ -117,7 +151,7 @@ const Login = () => {
           )}
 
           {mode === "email-input" && (
-            <form onSubmit={startEmail} className="mt-8 space-y-3" data-testid="login-email-form">
+            <form onSubmit={startEmail} className="mt-4 space-y-3" data-testid="login-email-form">
               <label className="block text-[12px] text-zinc-500 uppercase tracking-[0.15em]">Your email</label>
               <input
                 value={email}
