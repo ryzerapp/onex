@@ -21,6 +21,7 @@ import SupportCenter from "@/pages/SupportCenter";
 import Settings from "@/pages/Settings";
 import Activity from "@/pages/Activity";
 import GoogleAuthCallback from "@/pages/GoogleAuthCallback";
+import StoreMockups from "@/pages/StoreMockups";
 
 const AppRouter = () => {
   const location = useLocation();
@@ -33,6 +34,7 @@ const AppRouter = () => {
       <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
+      <Route path="/store-mockups" element={<StoreMockups />} />
       <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
