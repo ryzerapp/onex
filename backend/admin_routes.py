@@ -1,26 +1,13 @@
-"""OneX Club — Admin API.
-
-Single-allowlist super-admin model (env: ADMIN_EMAILS, default surya@onex.exchange).
-All routes mounted under /api/admin/*. Frontend lives at /admin/*.
-
-Sections:
-    1. Overview       — KPIs for the admin dashboard.
-    2. Users          — list / search / status.
-    3. Properties     — CRUD + launch_at timer + archive.
-    4. Webinars       — CRUD + Luma + YouTube recording link + archive.
-    5. Community      — CRUD + archive on community_updates.
-    6. Benefits       — toggle visible / archived on co_owner_benefits.
-    7. Allocation     — list + archive on user_allocation_interests.
-    8. Notifications  — manual nudge, bulk to all, allocation-opened blast.
-"""
+"""OneX Club — Admin API."""
 from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+import bcrypt
+from datetime import datetime, timezone, timedelta
 from typing import Annotated, Optional, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 # Re-import the shared helpers from server module — at runtime this works because
@@ -100,6 +87,31 @@ class AllocationOpenedBlast(BaseModel):
     custom_message: Optional[str] = None  # Optional override — defaults to template.
 
 
+class AdminLogin(BaseModel):
+    email: str
+    password: str
+
+
+# ─── Password hashing helpers (bcrypt — cost=12, the OWASP-recommended default) ──
+def _hash_password(plain: str) -> bytes:
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt(rounds=12))
+
+
+def _verify_password(plain: str, hashed: bytes) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed)
+    except (ValueError, TypeError):
+        return False
+
+
+# Hash the ADMIN_PASSWORD once at module import (avoids re-hashing on every login).
+_ADMIN_PWD_HASH: Optional[bytes] = None
+_ADMIN_PWD_RAW = os.environ.get("ADMIN_PASSWORD", "")
+if _ADMIN_PWD_RAW:
+    _ADMIN_PWD_HASH = _hash_password(_ADMIN_PWD_RAW)
+ADMIN_EMAILS_LIST = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "surya@onex.exchange").split(",") if e.strip()}
+
+
 # ─── Helpers ────────────────────────────────────────────────────────────────
 async def _send_admin_email(db, send_milestone_done, to_email: str, to_name: str,
                             subject: str, message: str, app_url: str) -> None:
@@ -170,6 +182,65 @@ def build_admin_router(deps: dict) -> APIRouter:
     @admin.get("/overview")
     async def admin_overview(_admin: dict = Depends(require_admin)) -> dict:
         return await admin_overview_impl(db)
+
+    # ─ Admin password login ────────────────────────────────────────────────
+    # Brute-force protection: 5 failed attempts in 15 min lock the {ip+email}
+    # tuple. Stored in MongoDB (no Redis) — TTL index expires entries automatically.
+    @admin.post("/auth/login")
+    async def admin_login(payload: AdminLogin, request: Request, response: Response) -> dict:
+        email = (payload.email or "").strip().lower()
+        if email not in ADMIN_EMAILS_LIST:
+            # Generic message — never leak whether the email is valid.
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if _ADMIN_PWD_HASH is None:
+            raise HTTPException(status_code=500, detail="Admin password not configured")
+
+        ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+        ident = f"{ip}:{email}"
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+        recent_failures = await db.admin_login_attempts.count_documents({
+            "ident": ident, "success": False, "at": {"$gte": cutoff.isoformat()},
+        })
+        if recent_failures >= 5:
+            raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
+
+        ok = _verify_password(payload.password, _ADMIN_PWD_HASH)
+        await db.admin_login_attempts.insert_one({
+            "ident": ident, "email": email, "ip": ip,
+            "success": ok, "at": _now(),
+        })
+        if not ok:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        # Find or create the admin user record (so the rest of the app can attribute actions).
+        user = await db.users.find_one({"email": email}, {"_id": 0})
+        if not user:
+            uid = f"admin_user_{uuid.uuid4().hex[:8]}"
+            user = {
+                "user_id": uid, "email": email, "name": "Admin",
+                "tier": "Pro-Owner", "aed_balance": 0,
+                "referral_code": f"admin-{uuid.uuid4().hex[:6]}",
+                "is_admin": True,
+                "created_at": _now(),
+            }
+            await db.users.insert_one(user)
+        else:
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"is_admin": True}})
+
+        # 30-day admin session — same cookie shape as the rest of the app.
+        token = f"admin_pwd_{uuid.uuid4().hex}"
+        await db.user_sessions.insert_one({
+            "user_id": user["user_id"], "session_token": token,
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=30),
+            "is_admin": True,
+            "created_at": datetime.now(timezone.utc),
+        })
+        response.set_cookie(
+            key="session_token", value=token,
+            max_age=30 * 24 * 60 * 60,
+            httponly=True, secure=True, samesite="none", path="/",
+        )
+        return {"ok": True, "user": {"email": user["email"], "name": user.get("name"), "is_admin": True}}
 
     # ─ 2. Users ─────────────────────────────────────────────────────────────
     @admin.get("/users")

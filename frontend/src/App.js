@@ -25,6 +25,7 @@ import LearningJourney from "@/pages/LearningJourney";
 import StoreMockups from "@/pages/StoreMockups";
 import AdminGuard from "@/admin/AdminGuard";
 import AdminLayout from "@/admin/AdminLayout";
+import AdminLogin from "@/admin/AdminLogin";
 import AdminDashboard from "@/admin/AdminDashboard";
 import { AdminUsers, AdminProperties, AdminWebinars, AdminCommunity, AdminBenefits, AdminAllocations, AdminNotify } from "@/admin/AdminPages";
 
@@ -42,6 +43,7 @@ const AppRouter = () => {
       <Route path="/store-mockups" element={<StoreMockups />} />
 
       {/* ─── Admin routes (super admin only) ──────────────────────────── */}
+      <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/admin" element={<AdminGuard><AdminLayout /></AdminGuard>}>
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />

@@ -24,7 +24,7 @@ const AdminGuard = ({ children }) => {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login?next=/admin/dashboard" replace />;
+  if (!user) return <Navigate to="/admin/login" replace />;
 
   const ok = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
   if (!ok) {
