@@ -4,6 +4,7 @@ import { Wallet, ChevronRight, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { navGroups } from "@/components/layout/navItems";
 import BrandMark from "@/components/common/BrandMark";
+import BuildInfo from "@/components/common/BuildInfo";
 
 const Sidebar = () => {
   const { user, logout } = useAuth();
@@ -90,6 +91,9 @@ const Sidebar = () => {
       >
         Sign out
       </button>
+      <div className="mt-3 text-[10px] text-zinc-600">
+        <BuildInfo>v1.0.0 · hold for build info</BuildInfo>
+      </div>
     </aside>
   );
 };

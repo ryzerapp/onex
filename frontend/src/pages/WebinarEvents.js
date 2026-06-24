@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/api";
 import { toast } from "sonner";
 import { Calendar, Clock, Users, Star, Play, Bell, Check, ArrowRight, Radio } from "lucide-react";
@@ -44,6 +45,7 @@ const WebinarCardAction = ({ webinar: w, onRegister, onRemind }) => {
 
 const WebinarEvents = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [tab, setTab] = useState("upcoming");
   const [data, setData] = useState(null);
   const [modalWebinar, setModalWebinar] = useState(null);
@@ -173,7 +175,7 @@ const WebinarEvents = () => {
           <h3 className="text-white text-[18px] font-semibold">Your Learning Journey</h3>
           <p className="text-zinc-400 text-[13px]">Attended {data.summary.attended} · Registered {data.summary.registered}</p>
         </div>
-        <button className="btn-ghost text-[#8CFF2E] border-[#8CFF2E]/40" data-testid="webinars-history-btn">View History <ArrowRight size={14} /></button>
+        <button onClick={() => navigate("/learning-journey")} className="btn-ghost text-[#8CFF2E] border-[#8CFF2E]/40" data-testid="webinars-history-btn">View History <ArrowRight size={14} /></button>
       </div>
 
       <LumaRegisterModal

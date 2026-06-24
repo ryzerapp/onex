@@ -1063,7 +1063,20 @@ async def dashboard(user: CurrentUser):
     next_milestone = pending or upcoming
     next_tier = next_tier_info(user["aed_balance"])
 
-    spotlight_doc = await db.properties.find_one({"archived": {"$ne": True}}, {"_id": 0}, sort=[("launch_date", 1)])
+    # Spotlight = next FUTURE launch among non-archived properties. Falls back to
+    # the most recent launch if everything's in the past (which can happen during
+    # a dry run before the launch_date is bumped).
+    now_iso = datetime.now(timezone.utc).isoformat()
+    spotlight_doc = await db.properties.find_one(
+        {"archived": {"$ne": True}, "launch_date": {"$gte": now_iso, "$ne": ""}},
+        {"_id": 0}, sort=[("launch_date", 1)],
+    )
+    if not spotlight_doc:
+        # Nothing in the future — show any property with a non-empty launch_date.
+        spotlight_doc = await db.properties.find_one(
+            {"archived": {"$ne": True}, "launch_date": {"$ne": "", "$ne": None}},
+            {"_id": 0}, sort=[("launch_date", -1)],
+        )
     if spotlight_doc:
         # Stamp `joined_waitlist` so the Dashboard CTA can show the amber
         # "Waitlist Joined" state instead of asking the user to re-join.

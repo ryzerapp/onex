@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { api } from "@/api";
 import { useAuth } from "@/contexts/AuthContext";
+import BuildInfo from "@/components/common/BuildInfo";
 
 const NAV = [
   { to: "/admin/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -68,6 +69,9 @@ const AdminLayout = () => {
             <LogOut size={16} /> Logout
           </button>
           <div className="px-3 py-2 text-[11px] text-zinc-600 truncate">{user?.email}</div>
+          <div className="px-3 pb-1 text-[10px] text-zinc-700">
+            <BuildInfo>v1.0.0 · hold for build info</BuildInfo>
+          </div>
         </div>
       </aside>
 

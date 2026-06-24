@@ -261,8 +261,13 @@ export const AdminProperties = () => {
             <Field label="Yield high (%)"><Input type="number" value={editing.yield_high} onChange={(e) => setEditing({...editing, yield_high: +e.target.value})}/></Field>
             <Field label="Spots available"><Input type="number" value={editing.spots_available} onChange={(e) => setEditing({...editing, spots_available: +e.target.value})}/></Field>
             <Field label="Spots total"><Input type="number" value={editing.spots_total} onChange={(e) => setEditing({...editing, spots_total: +e.target.value})}/></Field>
-            <Field label="Launch date (drives Dashboard timer)" testid="prop-launch" hint="ISO 8601 — e.g. 2026-04-22T14:30:00Z">
-              <Input value={editing.launch_date || ""} onChange={(e) => setEditing({...editing, launch_date: e.target.value})} placeholder="2026-04-22T14:30:00Z" data-testid="admin-prop-launch-date"/>
+            <Field label="Launch date (drives Dashboard timer)" testid="prop-launch" hint="Pick the exact moment allocation opens — shows as a live countdown on every member's dashboard">
+              <Input
+                type="datetime-local"
+                value={editing.launch_date ? new Date(editing.launch_date).toISOString().slice(0, 16) : ""}
+                onChange={(e) => setEditing({...editing, launch_date: e.target.value ? new Date(e.target.value).toISOString() : ""})}
+                data-testid="admin-prop-launch-date"
+              />
             </Field>
             <Field label="Waitlist count (display only)"><Input type="number" value={editing.waitlist_count} onChange={(e) => setEditing({...editing, waitlist_count: +e.target.value})}/></Field>
             <div className="col-span-2"><Field label="Description"><Textarea rows={3} value={editing.description} onChange={(e) => setEditing({...editing, description: e.target.value})}/></Field></div>

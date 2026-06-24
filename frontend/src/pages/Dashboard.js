@@ -21,7 +21,12 @@ const Countdown = ({ target }) => {
     const id = setInterval(() => setNow(Date.now()), MS_PER_SECOND);
     return () => clearInterval(id);
   }, []);
-  const diff = Math.max(0, new Date(target).getTime() - now);
+  // Guard against invalid/empty launch_date — show "TBA" instead of NaN.
+  const t = target ? new Date(target).getTime() : NaN;
+  if (!Number.isFinite(t)) {
+    return <div className="text-zinc-500 text-[12px]">Launch date — TBA</div>;
+  }
+  const diff = Math.max(0, t - now);
   const days = Math.floor(diff / MS_PER_DAY);
   const hours = Math.floor((diff / MS_PER_HOUR) % 24);
   const mins = Math.floor((diff / MS_PER_MINUTE) % 60);
